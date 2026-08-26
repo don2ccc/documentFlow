@@ -1,9 +1,24 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import { IS_PUBLIC_KEY } from '../decorators/require-permission.decorator';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  canActivate(_context: ExecutionContext): boolean {
-    // Task 3 填充真实 JWT 校验
-    return true;
+  constructor(private readonly reflector: Reflector, private readonly jwtService: JwtService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()]);
+    if (isPublic) return true;
+    const request = context.switchToHttp().getRequest();
+    const header: string | undefined = request.headers?.authorization;
+    if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('未登录');
+    try {
+      const payload = await this.jwtService.verifyAsync(header.slice(7));
+      request.user = { id: payload.sub, username: payload.username, roles: payload.roles, permissions: payload.permissions };
+      return true;
+    } catch {
+      throw new UnauthorizedException('登录已过期，请重新登录');
+    }
   }
 }

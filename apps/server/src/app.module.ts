@@ -3,6 +3,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import { HealthController } from './modules/health/health.controller';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { RolesModule } from './modules/roles/roles.module';
 
 @Module({
   imports: [
@@ -15,7 +18,10 @@ import { HealthController } from './modules/health/health.controller';
         autoLoadEntities: true,
         synchronize: process.env.NODE_ENV !== 'production'
       })
-    })
+    }),
+    AuthModule,
+    UsersModule,
+    RolesModule
   ],
   controllers: [HealthController]
 })
