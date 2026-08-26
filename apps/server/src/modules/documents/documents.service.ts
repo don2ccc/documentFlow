@@ -8,6 +8,8 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { ConversionJob } from './entities/conversion-job.entity';
 import { Document } from './entities/document.entity';
 import { DocumentVersion } from './entities/document-version.entity';
+import { ConverterService } from './converter.service';
+import * as path from 'path';
 import { ALLOWED_MIME, MAX_FILE_SIZE, sha1 } from './documents.storage';
 
 export interface DocumentDto {
@@ -27,7 +29,8 @@ export class DocumentsService {
   constructor(
     @InjectRepository(Document) private readonly docRepo: Repository<Document>,
     @InjectRepository(DocumentVersion) private readonly versionRepo: Repository<DocumentVersion>,
-    @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>
+    @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>,
+    private readonly converter: ConverterService
   ) {}
 
   async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
@@ -122,6 +125,36 @@ export class DocumentsService {
     if (!version) throw new NotFoundException('版本不存在');
     if (!fs.existsSync(version.filePath)) throw new NotFoundException('文件已丢失');
     res.download(version.filePath, version.fileName);
+  }
+
+  async streamPreview(userId: string, documentId: string, versionId: string, res: any) {
+    const doc = await this.getDocument(documentId);
+    this.assertBasicView(userId, doc);
+    const version = await this.versionRepo.findOneBy({ id: versionId, documentId });
+    if (!version) throw new NotFoundException('版本不存在');
+    const job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
+    if (!job || job.status === 'pending') { res.status(202).json({ converting: true }); return; }
+    if (job.status === 'failed' || !job.previewPath || !fs.existsSync(job.previewPath)) {
+      res.status(422).json({ previewFailed: true });
+      return;
+    }
+    res.type('application/pdf');
+    res.sendFile(path.resolve(job.previewPath));
+  }
+
+  async retryConvert(userId: string, versionId: string) {
+    const version = await this.versionRepo.findOneBy({ id: versionId });
+    if (!version) throw new NotFoundException('版本不存在');
+    const doc = await this.getDocument(version.documentId);
+    if (doc.ownerId !== userId && !['user:manage'].some((p) => p)) throw new ForbiddenException('无权操作');
+    let job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
+    if (!job) job = await this.jobRepo.save(this.jobRepo.create({ documentVersionId: versionId }));
+    job.status = 'pending';
+    job.error = null;
+    await this.jobRepo.save(job);
+    await this.converter.convert(job.id);
+    const updated = await this.jobRepo.findOneBy({ id: job.id });
+    return { status: updated?.status ?? 'failed' };
   }
 
   private assertBasicView(userId: string, doc: Document) {

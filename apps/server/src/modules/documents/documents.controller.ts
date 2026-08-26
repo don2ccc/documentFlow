@@ -44,6 +44,16 @@ export class DocumentsController {
     return this.documents.addVersion(user.id, id, file, dto);
   }
 
+  @Get(':id/versions/:versionId/preview')
+  preview(@Param('id') id: string, @Param('versionId') versionId: string, @CurrentUser() user: AuthUser, @Res() res: any) {
+    return this.documents.streamPreview(user.id, id, versionId, res);
+  }
+
+  @Post('versions/:versionId/retry-convert')
+  retryConvert(@Param('versionId') versionId: string, @CurrentUser() user: AuthUser) {
+    return this.documents.retryConvert(user.id, versionId);
+  }
+
   @Get(':id/versions')
   listVersions(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.documents.listVersions(user.id, id);
