@@ -24,7 +24,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         type: 'postgres',
         url: config.get<string>('databaseUrl'),
         autoLoadEntities: true,
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: process.env.NODE_ENV !== 'production' || process.env.DB_SYNC === 'true',
       })
     }),
     AuthModule,
