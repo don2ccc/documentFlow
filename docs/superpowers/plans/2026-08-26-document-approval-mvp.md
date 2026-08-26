@@ -142,7 +142,7 @@ ACCEPTANCE.md                        # 验收清单（最后任务填充）
 - Create: `packages/shared/src/index.ts`
 
 **Interfaces:**
-- Produces: `@shared` 别名（两个 app 均解析到 `packages/shared/src`）；枚举 `NodeType`、`ApprovalMethod`、`AssigneeType`、`TimeoutAction`、`DocumentStatus`、`InstanceStatus`、`TaskStatus`、`UserStatus`、`RecordAction`
+- Produces: workspace 包 `@document-flow/shared`（npm workspaces 符号链接，预编译到 `packages/shared/dist`，前后端直接 import）；枚举 `NodeType`、`ApprovalMethod`、`AssigneeType`、`TimeoutAction`、`DocumentStatus`、`InstanceStatus`、`TaskStatus`、`UserStatus`、`RecordAction`
 
 - [ ] **Step 1: 创建根 package.json（npm workspaces）**
 
@@ -229,7 +229,7 @@ export interface AuthUser { id: string; username: string; roles: string[]; permi
   "compilerOptions": {
     "module": "commonjs", "target": "ES2021", "experimentalDecorators": true,
     "emitDecoratorMetadata": true, "strict": true, "skipLibCheck": true,
-    "baseUrl": "./", "paths": { "@shared/*": ["../../packages/shared/src/*"] }
+    "baseUrl": "./"
   }
 }
 ```
@@ -259,15 +259,15 @@ export interface AuthUser { id: string; username: string; roles: string[]; permi
 ```ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { '@shared': resolve(__dirname, '../../packages/shared/src') } },
+
   server: { proxy: { '/api': 'http://localhost:3000' } }
 });
 ```
 
-`apps/web/tsconfig.json`：`"jsx": "react-jsx"`、`"paths": { "@shared/*": ["../../packages/shared/src/*"] }`、`"types": ["vitest/globals", "@testing-library/jest-dom"]`。
+`apps/web/tsconfig.json`：`"jsx": "react-jsx"`、`"types": ["vitest/globals", "@testing-library/jest-dom"]`。
 
 - [ ] **Step 4: 安装依赖并验证构建**
 
@@ -296,7 +296,7 @@ git commit -m "chore: monorepo 脚手架与共享类型包"
 - Create: `apps/server/src/modules/health/health.controller.ts`
 
 **Interfaces:**
-- Consumes: Task 1 的 `@shared` 别名
+- Consumes: Task 1 的 `@document-flow/shared` 包
 - Produces: `JwtAuthGuard`、`RequirePermission(...codes)` 装饰器、`CurrentUser()` 参数装饰器、`AppModule`（后续模块注册入口）
 
 - [ ] **Step 1: 写失败测试：应用可启动且健康检查返回 ok**
@@ -504,7 +504,7 @@ Expected: FAIL（模块不存在 / 401 变为 200）
 
 ```ts
 import { Column, Entity, JoinTable, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { UserStatus } from '@shared/enums';
+import { UserStatus } from '@document-flow/shared';
 import { Role } from '../../roles/entities/role.entity';
 
 @Entity('users')
@@ -810,7 +810,7 @@ async tree(): Promise<DepartmentNode[]> {
 - Create: `apps/server/src/modules/documents/dto/create-version.dto.ts`
 
 **Interfaces:**
-- Consumes: `@shared/enums`（DocumentStatus）、Category 实体（无注入，按表名查询）
+- Consumes: `@document-flow/shared`（DocumentStatus 枚举）、Category 实体（无注入，按表名查询）
 - Produces:
   - `POST /api/documents`（multipart，`document:upload`）字段：`file` + `title, categoryId, description?, amount?` → 201 DocumentDto；单文件 ≤ 20MB，类型白名单 `pdf,doc,docx,xls,xlsx,ppt,pptx,png,jpg,jpeg,gif`
   - `POST /api/documents/:id/versions`（multipart）字段：`file, reason` → 新版本；仅文档归属人可操作；文档状态须为 `rejected` 或 `draft`
@@ -1066,7 +1066,7 @@ it('a second user cannot see others draft document', async () => {
 - Create: `apps/web/src/pages/LoginPage.tsx`
 
 **Interfaces:**
-- Consumes: `/api/auth/login`、`@shared` 枚举
+- Consumes: `/api/auth/login`、`@document-flow/shared` 枚举
 - Produces: `useAuth() → { user, token, permissions, login, logout }`；`AppLayout` 侧边栏路由表（`/dashboard`、`/documents`、`/approvals`、`/notifications`、管理端子路由）；`StatusTag({ status })`
 
 - [ ] **Step 1: 写失败测试：LoginPage 提交后写入 token**
@@ -1160,7 +1160,7 @@ api.interceptors.response.use((r) => r, (err) => {
 - Create: `apps/server/test/workflows.unit-spec.ts`
 
 **Interfaces:**
-- Consumes: `@shared` 的 `WorkflowNodeDto`/`WorkflowEdgeDto`、`WorkflowStatus`、`NodeType`
+- Consumes: `@document-flow/shared` 的 `WorkflowNodeDto`/`WorkflowEdgeDto`、`WorkflowStatus`、`NodeType`
 - Produces:
   - `GET /api/workflows?status&keyword` → 列表（含节点数）
   - `POST /api/workflows { name, description? }` → 默认创建「开始 + 审批 + 结束」三节点
@@ -1241,7 +1241,7 @@ Controller：管理接口挂 `workflow:manage`；列表 `GET /api/workflows` 允
 - Create: `apps/server/test/approval-engine.unit-spec.ts`
 
 **Interfaces:**
-- Consumes: Task 11 的 `WorkflowsService.getById`、Document 实体、`@shared` 枚举
+- Consumes: Task 11 的 `WorkflowsService.getById`、Document 实体、`@document-flow/shared` 枚举
 - Produces（引擎对外方法）：
   - `start(workflowId, documentId, initiatorId): Promise<ApprovalInstance>`
   - `enterNode(instance, nodeId): Promise<void>`
