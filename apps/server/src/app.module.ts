@@ -11,6 +11,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { ApprovalsModule } from './modules/approvals/approvals.module';
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { WorkflowsModule } from './modules/workflows/workflows.module';
     DepartmentsModule,
     CategoriesModule,
     DocumentsModule,
-    WorkflowsModule
+    WorkflowsModule,
+    ApprovalsModule
   ],
   controllers: [HealthController],
   providers: [

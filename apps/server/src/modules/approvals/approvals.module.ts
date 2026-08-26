@@ -1,0 +1,22 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Document } from '../documents/entities/document.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { WorkflowsModule } from '../workflows/workflows.module';
+import { ApprovalEngineService } from './approval-engine.service';
+import { ApprovalsController } from './approvals.controller';
+import { ApprovalInstance } from './entities/approval-instance.entity';
+import { ApprovalRecord } from './entities/approval-record.entity';
+import { ApprovalTask } from './entities/approval-task.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([ApprovalInstance, ApprovalTask, ApprovalRecord, Document]),
+    WorkflowsModule,
+    NotificationsModule
+  ],
+  controllers: [ApprovalsController],
+  providers: [ApprovalEngineService],
+  exports: [ApprovalEngineService]
+})
+export class ApprovalsModule {}
