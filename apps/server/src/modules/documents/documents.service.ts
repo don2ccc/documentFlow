@@ -1,0 +1,158 @@
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { DocumentStatus } from '@document-flow/shared';
+import * as fs from 'fs';
+import { CreateVersionDto } from './dto/create-version.dto';
+import { UploadDocumentDto } from './dto/upload-document.dto';
+import { ConversionJob } from './entities/conversion-job.entity';
+import { Document } from './entities/document.entity';
+import { DocumentVersion } from './entities/document-version.entity';
+import { ALLOWED_MIME, MAX_FILE_SIZE, sha1 } from './documents.storage';
+
+export interface DocumentDto {
+  id: string;
+  title: string;
+  description: string | null;
+  categoryId: string | null;
+  amount: string | null;
+  status: DocumentStatus;
+  ownerId: string;
+  createdAt: string;
+  latestVersion: { id: string; versionNo: number; fileName: string; size: number; mimeType: string } | null;
+}
+
+@Injectable()
+export class DocumentsService {
+  constructor(
+    @InjectRepository(Document) private readonly docRepo: Repository<Document>,
+    @InjectRepository(DocumentVersion) private readonly versionRepo: Repository<DocumentVersion>,
+    @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>
+  ) {}
+
+  async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
+    this.validateFile(file);
+    const checksum = sha1(fs.readFileSync(file.path));
+    const doc = await this.docRepo.save(
+      this.docRepo.create({
+        title: dto.title,
+        description: dto.description ?? null,
+        categoryId: dto.categoryId || null,
+        amount: dto.amount ?? null,
+        ownerId: userId,
+        status: DocumentStatus.Draft
+      })
+    );
+    const version = await this.versionRepo.save(
+      this.versionRepo.create({
+        documentId: doc.id,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        filePath: file.path,
+        checksum,
+        versionNo: 1,
+        uploadedBy: userId
+      })
+    );
+    await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
+    return this.toDto(doc, version);
+  }
+
+  async findMy(userId: string, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
+    const page = query.page ?? 1;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const qb = this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId });
+    if (query.status) qb.andWhere('d.status = :status', { status: query.status });
+    if (query.categoryId) qb.andWhere('d.categoryId = :categoryId', { categoryId: query.categoryId });
+    if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
+    const [items, total] = await qb.orderBy('d.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
+    const dtos = await Promise.all(items.map((d) => this.toDto(d)));
+    return { items: dtos, total, page, pageSize };
+  }
+
+  async getDocument(id: string): Promise<Document> {
+    const doc = await this.docRepo.findOneBy({ id });
+    if (!doc) throw new NotFoundException('文档不存在');
+    return doc;
+  }
+
+  async addVersion(userId: string, documentId: string, file: Express.Multer.File, dto: CreateVersionDto) {
+    const doc = await this.getDocument(documentId);
+    if (doc.ownerId !== userId) throw new ForbiddenException('只能操作自己的文档');
+    if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(doc.status)) {
+      throw new BadRequestException('仅草稿或已驳回的文档可更新版本');
+    }
+    this.validateFile(file);
+    const checksum = sha1(fs.readFileSync(file.path));
+    const max = await this.versionRepo
+      .createQueryBuilder('v')
+      .select('COALESCE(MAX(v.versionNo), 0)', 'max')
+      .where('v.documentId = :documentId', { documentId })
+      .getRawOne<{ max: string }>();
+    const version = await this.versionRepo.save(
+      this.versionRepo.create({
+        documentId,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        filePath: file.path,
+        checksum,
+        versionNo: Number(max?.max ?? 0) + 1,
+        reason: dto.reason ?? null,
+        uploadedBy: userId
+      })
+    );
+    await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
+    doc.updatedAt = new Date();
+    await this.docRepo.save(doc);
+    return this.toDto(doc, version);
+  }
+
+  async listVersions(userId: string, documentId: string) {
+    const doc = await this.getDocument(documentId);
+    this.assertBasicView(userId, doc);
+    return this.versionRepo.find({ where: { documentId }, order: { versionNo: 'DESC' } });
+  }
+
+  async streamDownload(userId: string, documentId: string, versionId: string, res: any) {
+    const doc = await this.getDocument(documentId);
+    this.assertBasicView(userId, doc);
+    const version = await this.versionRepo.findOneBy({ id: versionId, documentId });
+    if (!version) throw new NotFoundException('版本不存在');
+    if (!fs.existsSync(version.filePath)) throw new NotFoundException('文件已丢失');
+    res.download(version.filePath, version.fileName);
+  }
+
+  private assertBasicView(userId: string, doc: Document) {
+    if (doc.ownerId !== userId) throw new ForbiddenException('无权查看该文档');
+  }
+
+  private validateFile(file: Express.Multer.File) {
+    if (!ALLOWED_MIME[file.mimetype]) {
+      fs.unlinkSync(file.path);
+      throw new BadRequestException('不支持的文件类型');
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      fs.unlinkSync(file.path);
+      throw new BadRequestException('文件超过 20MB');
+    }
+  }
+
+  private async toDto(doc: Document, latest?: DocumentVersion): Promise<DocumentDto> {
+    const version = latest ?? (await this.versionRepo.findOne({ where: { documentId: doc.id }, order: { versionNo: 'DESC' } }));
+    return {
+      id: doc.id,
+      title: doc.title,
+      description: doc.description,
+      categoryId: doc.categoryId,
+      amount: doc.amount,
+      status: doc.status,
+      ownerId: doc.ownerId,
+      createdAt: doc.createdAt.toISOString(),
+      latestVersion: version
+        ? { id: version.id, versionNo: version.versionNo, fileName: version.fileName, size: version.size, mimeType: version.mimeType }
+        : null
+    };
+  }
+}

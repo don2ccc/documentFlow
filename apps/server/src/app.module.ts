@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, ValidationPipe } from '@nestjs/common';
+import { APP_PIPE } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
@@ -8,6 +9,7 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 
 @Module({
   imports: [
@@ -25,8 +27,12 @@ import { CategoriesModule } from './modules/categories/categories.module';
     UsersModule,
     RolesModule,
     DepartmentsModule,
-    CategoriesModule
+    CategoriesModule,
+    DocumentsModule
   ],
-  controllers: [HealthController]
+  controllers: [HealthController],
+  providers: [
+    { provide: APP_PIPE, useValue: new ValidationPipe({ whitelist: true, transform: true }) }
+  ]
 })
 export class AppModule {}
