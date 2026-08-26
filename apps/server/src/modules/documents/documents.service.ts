@@ -133,7 +133,15 @@ export class DocumentsService {
   async getDetail(user: AuthUser, id: string) {
     const doc = await this.assertCanView(user, id);
     const versions = await this.versionRepo.find({ where: { documentId: id }, order: { versionNo: 'DESC' } });
-    return { ...(await this.toDto(doc)), versions, progress: null };
+    let progress = null;
+    if (doc.currentInstanceId) {
+      try {
+        progress = await this.engine.getProgress(user, doc.currentInstanceId);
+      } catch {
+        progress = null;
+      }
+    }
+    return { ...(await this.toDto(doc)), versions, progress, currentInstanceId: doc.currentInstanceId };
   }
 
   async assertCanView(user: AuthUser, documentId: string): Promise<Document> {
