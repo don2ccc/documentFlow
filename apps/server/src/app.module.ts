@@ -6,6 +6,7 @@ import { HealthController } from './modules/health/health.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { DepartmentsModule } from './modules/departments/departments.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { RolesModule } from './modules/roles/roles.module';
     }),
     AuthModule,
     UsersModule,
-    RolesModule
+    RolesModule,
+    DepartmentsModule
   ],
   controllers: [HealthController]
 })
