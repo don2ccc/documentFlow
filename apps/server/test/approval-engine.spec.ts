@@ -29,12 +29,13 @@ function makeEngine(overrides: Partial<Record<string, any>> = {}) {
     documents: { findOneBy: jest.fn(async () => ({ id: 'd1', amount: '100', categoryId: null })), update: jest.fn() },
     workflows: { getById: jest.fn() },
     dataSource: { query: jest.fn(async () => []) },
+    audit: { log: jest.fn() },
     ...overrides
   };
   return {
     engine: new ApprovalEngineService(
       repos.instance as any, repos.task as any, repos.record as any, repos.notification as any,
-      repos.documents as any, repos.workflows as any, repos.dataSource as any
+      repos.documents as any, repos.workflows as any, repos.dataSource as any, repos.audit as any
     ),
     repos
   };

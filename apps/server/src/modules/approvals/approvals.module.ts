@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Document } from '../documents/entities/document.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
+import { AuditModule } from '../audit/audit.module';
 import { ApprovalEngineService } from './approval-engine.service';
 import { ApprovalTimeoutWorker } from './approval-timeout.worker';
 import { ApprovalsController } from './approvals.controller';
@@ -13,6 +14,7 @@ import { ApprovalTask } from './entities/approval-task.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([ApprovalInstance, ApprovalTask, ApprovalRecord, Document]),
+    AuditModule,
     WorkflowsModule,
     NotificationsModule
   ],

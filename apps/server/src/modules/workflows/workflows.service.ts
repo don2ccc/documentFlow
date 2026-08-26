@@ -7,13 +7,15 @@ import { SaveWorkflowDto, WorkflowEdgeDto, WorkflowNodeDto } from './dto/save-wo
 import { WorkflowEdge } from './entities/workflow-edge.entity';
 import { WorkflowNode } from './entities/workflow-node.entity';
 import { Workflow } from './entities/workflow.entity';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class WorkflowsService {
   constructor(
     @InjectRepository(Workflow) private readonly workflowRepo: Repository<Workflow>,
     @InjectRepository(WorkflowNode) private readonly nodeRepo: Repository<WorkflowNode>,
-    @InjectRepository(WorkflowEdge) private readonly edgeRepo: Repository<WorkflowEdge>
+    @InjectRepository(WorkflowEdge) private readonly edgeRepo: Repository<WorkflowEdge>,
+    private readonly audit: AuditService
   ) {}
 
   async findAll(query: { status?: string; keyword?: string }) {
@@ -46,6 +48,7 @@ export class WorkflowsService {
       this.edgeRepo.create({ id: `e_${randomUUID().slice(0, 8)}`, workflowId: wf.id, fromNodeId: s, toNodeId: a }),
       this.edgeRepo.create({ id: `e_${randomUUID().slice(0, 8)}`, workflowId: wf.id, fromNodeId: a, toNodeId: e })
     ]);
+    await this.audit.log('system', 'workflow:create', 'workflow', wf.id, { name: dto.name });
     return this.getById(wf.id);
   }
 
@@ -79,6 +82,7 @@ export class WorkflowsService {
     );
     await this.nodeRepo.save(nodes);
     await this.edgeRepo.save(edges);
+    await this.audit.log('system', 'workflow:save-nodes', 'workflow', id, { version: wf.version + 1 });
     wf.version += 1;
     wf.updatedAt = new Date();
     await this.workflowRepo.save(wf);
@@ -96,6 +100,7 @@ export class WorkflowsService {
         edges.map((e) => ({ id: e.id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId, conditionExpr: e.conditionExpr }))
       );
     }
+    await this.audit.log('system', 'workflow:set-status', 'workflow', id, { status });
     wf.status = status;
     wf.updatedAt = new Date();
     return this.workflowRepo.save(wf);

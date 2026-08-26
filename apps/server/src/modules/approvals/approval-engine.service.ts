@@ -7,6 +7,7 @@ import {
 } from '@document-flow/shared';
 import { Notification } from '../notifications/entities/notification.entity';
 import { WorkflowsService } from '../workflows/workflows.service';
+import { AuditService } from '../audit/audit.service';
 import { Document } from '../documents/entities/document.entity';
 import { ApprovalInstance } from './entities/approval-instance.entity';
 import { ApprovalRecord } from './entities/approval-record.entity';
@@ -23,7 +24,8 @@ export class ApprovalEngineService {
     @InjectRepository(Notification) private readonly notificationRepo: Repository<Notification>,
     @InjectRepository(Document) private readonly documentsRepo: Repository<Document>,
     private readonly workflows: WorkflowsService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly audit: AuditService
   ) {}
 
   async submit(workflowId: string, documentId: string, initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
@@ -116,6 +118,7 @@ export class ApprovalEngineService {
       })
     );
     const node = instance.snapshot.nodes.find((n) => n.id === task.nodeId)!;
+    await this.audit.log(actorId, action === 'approve' ? 'approval:approve' : 'approval:reject', 'approval_task', task.id, comment ? { comment } : undefined);
     task.claimedBy = actorId;
     task.processedAt = new Date();
     if (action === 'reject') {
@@ -210,6 +213,7 @@ export class ApprovalEngineService {
     await this.recordRepo.save(
       this.recordRepo.create({ instanceId: task.instanceId, taskId: task.id, actorId, action: RecordAction.Transfer, comment: comment ?? null })
     );
+    await this.audit.log(actorId, 'approval:transfer', 'approval_task', task.id, toUserId ? { toUserId } : undefined);
     await this.notify([toUserId], 'new_task', '任务已转办给您', `文档审批：${node.name}`, instance.documentId);
   }
 
@@ -228,6 +232,7 @@ export class ApprovalEngineService {
     await this.taskRepo.update({ instanceId, status: TaskStatus.Pending }, { status: TaskStatus.Voided });
     await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Draft });
     await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Withdraw }));
+    await this.audit.log(actorId, 'approval:withdraw', 'approval_instance', instanceId);
   }
 
   async remind(instanceId: string, actorId: string) {
@@ -241,6 +246,7 @@ export class ApprovalEngineService {
       await this.notify([...new Set(userIds)], 'remind', '催办提醒', '发起人正在催办，请尽快处理。', instance.documentId);
     }
     await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Remind }));
+    await this.audit.log(actorId, 'approval:remind', 'approval_instance', instanceId);
   }
 
   async getProgress(user: AuthUser, instanceId: string) {

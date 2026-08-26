@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from '../users/users.module';
+import { AuditModule } from '../audit/audit.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -10,6 +11,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 
 @Module({
   imports: [
+    AuditModule,
     UsersModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

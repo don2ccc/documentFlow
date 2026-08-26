@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser, DocumentStatus } from '@document-flow/shared';
 import { ApprovalEngineService } from '../approvals/approval-engine.service';
+import { AuditService } from '../audit/audit.service';
 import * as fs from 'fs';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -33,7 +34,8 @@ export class DocumentsService {
     @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>,
     private readonly converter: ConverterService,
     private readonly dataSource: DataSource,
-    private readonly engine: ApprovalEngineService
+    private readonly engine: ApprovalEngineService,
+    private readonly audit: AuditService
   ) {}
 
   async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
@@ -62,6 +64,7 @@ export class DocumentsService {
       })
     );
     await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
+    await this.audit.log(userId, 'document:upload', 'document', doc.id, { title: doc.title });
     return this.toDto(doc, version);
   }
 
@@ -103,6 +106,7 @@ export class DocumentsService {
     doc.status = DocumentStatus.InApproval;
     doc.currentInstanceId = instance.id;
     await this.docRepo.save(doc);
+    await this.audit.log(user.id, 'document:submit', 'document', id, { workflowId });
     return this.toDto(doc);
   }
 
@@ -114,6 +118,7 @@ export class DocumentsService {
     doc.status = DocumentStatus.Draft;
     doc.currentInstanceId = null;
     await this.docRepo.save(doc);
+    await this.audit.log(user.id, 'document:withdraw', 'document', id);
     return this.toDto(doc);
   }
 

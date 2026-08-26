@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { In, Repository } from 'typeorm';
 import { UserBriefDto, UserStatus } from '@document-flow/shared';
 import { Role } from '../roles/entities/role.entity';
+import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { User } from './entities/user.entity';
@@ -12,7 +13,8 @@ import { User } from './entities/user.entity';
 export class UsersService {
   constructor(
     @InjectRepository(User) private readonly repo: Repository<User>,
-    @InjectRepository(Role) private readonly roleRepo: Repository<Role>
+    @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
+    private readonly audit: AuditService
   ) {}
 
   async findByUsernameWithRoles(username: string): Promise<User | null> {
@@ -36,7 +38,9 @@ export class UsersService {
       status: UserStatus.Active,
       roles
     });
-    return this.toBrief(await this.repo.save(user));
+    const saved = await this.repo.save(user);
+    await this.audit.log(dto.username === 'admin' ? 'system' : saved.id, 'user:create', 'user', saved.id, { username: saved.username });
+    return this.toBrief(saved);
   }
 
   async findAll(query: ListUsersQueryDto) {
@@ -58,6 +62,7 @@ export class UsersService {
     const user = await this.repo.findOneBy({ id });
     if (!user) throw new NotFoundException('用户不存在');
     user.status = status;
+    await this.audit.log(operatorId, 'user:update-status', 'user', id, { status });
     return this.toBrief(await this.repo.save(user));
   }
 
@@ -65,6 +70,7 @@ export class UsersService {
     const user = await this.repo.findOneBy({ id });
     if (!user) throw new NotFoundException('用户不存在');
     user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.audit.log(id, 'user:reset-password', 'user', id);
     await this.repo.save(user);
     return { ok: true };
   }

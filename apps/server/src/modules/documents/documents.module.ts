@@ -10,9 +10,10 @@ import { DocumentsService } from './documents.service';
 import { ConverterService } from './converter.service';
 import { ConverterWorker } from './converter.worker';
 import { ApprovalsModule } from '../approvals/approvals.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Document, DocumentVersion, ConversionJob]), ApprovalsModule],
+  imports: [TypeOrmModule.forFeature([Document, DocumentVersion, ConversionJob]), ApprovalsModule, AuditModule],
   controllers: [DocumentsController],
   providers: [
     DocumentsService,

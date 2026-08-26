@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface LoginResult {
   accessToken: string;
@@ -10,7 +11,7 @@ export interface LoginResult {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly users: UsersService, private readonly jwt: JwtService) {}
+  constructor(private readonly users: UsersService, private readonly jwt: JwtService, private readonly audit: AuditService) {}
 
   async login(username: string, password: string): Promise<LoginResult> {
     const user = await this.users.findByUsernameWithRoles(username);
@@ -21,6 +22,7 @@ export class AuthService {
     const roleIds = user.roles.map((r) => r.id);
     const permissions = [...new Set(user.roles.flatMap((r) => r.permissions.map((p) => p.code)))];
     const accessToken = await this.jwt.signAsync({ sub: user.id, username: user.username, roles, permissions, roleIds });
+    await this.audit.log(user.id, 'login', 'auth', undefined, { username });
     return {
       accessToken,
       user: { id: user.id, username: user.username, name: user.name, departmentId: user.departmentId, roles }

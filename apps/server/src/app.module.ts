@@ -12,6 +12,8 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -22,7 +24,7 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
         type: 'postgres',
         url: config.get<string>('databaseUrl'),
         autoLoadEntities: true,
-        synchronize: process.env.NODE_ENV !== 'production'
+        synchronize: process.env.NODE_ENV !== 'production',
       })
     }),
     AuthModule,
@@ -32,7 +34,9 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
     CategoriesModule,
     DocumentsModule,
     WorkflowsModule,
-    ApprovalsModule
+    ApprovalsModule,
+    AuditModule,
+    DashboardModule
   ],
   controllers: [HealthController],
   providers: [
