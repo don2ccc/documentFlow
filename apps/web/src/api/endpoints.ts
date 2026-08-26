@@ -38,18 +38,18 @@ export const documentsApi = {
 
 export const workflowsApi = {
   list: (params: Record<string, unknown> = {}) => api.get<WorkflowItem[]>('/workflows', { params }).then((r) => r.data),
-  get: (id: string) => api.get<WorkflowItem & { nodes: any[]; edges: any[] }>(/workflows/).then((r) => r.data),
+  get: (id: string) => api.get<WorkflowItem & { nodes: any[]; edges: any[] }>(`/workflows/${id}`).then((r) => r.data),
   create: (data: { name: string; description?: string }) => api.post('/workflows', data).then((r) => r.data),
-  saveNodes: (id: string, data: { nodes: any[]; edges: any[] }) => api.put(/workflows//nodes, data).then((r) => r.data),
-  activate: (id: string) => api.post(/workflows//activate).then((r) => r.data),
-  deactivate: (id: string) => api.post(/workflows//deactivate).then((r) => r.data)
+  saveNodes: (id: string, data: { nodes: any[]; edges: any[] }) => api.put(`/workflows/${id}/nodes`, data).then((r) => r.data),
+  activate: (id: string) => api.post(`/workflows/${id}/activate`).then((r) => r.data),
+  deactivate: (id: string) => api.post(`/workflows/${id}/deactivate`).then((r) => r.data)
 };
 
 export const categoriesApi = {
   list: () => api.get<CategoryItem[]>('/categories').then((r) => r.data),
   create: (data: { name: string; sortOrder?: number }) => api.post('/categories', data).then((r) => r.data),
-  update: (id: string, data: { name: string; sortOrder?: number }) => api.patch(/categories/, data).then((r) => r.data),
-  remove: (id: string) => api.delete(/categories/).then((r) => r.data)
+  update: (id: string, data: { name: string; sortOrder?: number }) => api.patch(`/categories/${id}`, data).then((r) => r.data),
+  remove: (id: string) => api.delete(`/categories/${id}`).then((r) => r.data)
 };
 
 export interface TodoItem { taskId: string; documentId: string; title: string; nodeName: string; priority: 'high' | 'normal' | 'low'; dueAt: string | null; submittedByName: string; documentStatus: string }
