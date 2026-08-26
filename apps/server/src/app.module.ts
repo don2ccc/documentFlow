@@ -10,6 +10,7 @@ import { RolesModule } from './modules/roles/roles.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { WorkflowsModule } from './modules/workflows/workflows.module';
 
 @Module({
   imports: [
@@ -28,7 +29,8 @@ import { DocumentsModule } from './modules/documents/documents.module';
     RolesModule,
     DepartmentsModule,
     CategoriesModule,
-    DocumentsModule
+    DocumentsModule,
+    WorkflowsModule
   ],
   controllers: [HealthController],
   providers: [
