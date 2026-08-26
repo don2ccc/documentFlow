@@ -37,11 +37,19 @@ export const documentsApi = {
 };
 
 export const workflowsApi = {
-  list: (params: Record<string, unknown> = {}) => api.get<WorkflowItem[]>('/workflows', { params }).then((r) => r.data)
+  list: (params: Record<string, unknown> = {}) => api.get<WorkflowItem[]>('/workflows', { params }).then((r) => r.data),
+  get: (id: string) => api.get<WorkflowItem & { nodes: any[]; edges: any[] }>(/workflows/).then((r) => r.data),
+  create: (data: { name: string; description?: string }) => api.post('/workflows', data).then((r) => r.data),
+  saveNodes: (id: string, data: { nodes: any[]; edges: any[] }) => api.put(/workflows//nodes, data).then((r) => r.data),
+  activate: (id: string) => api.post(/workflows//activate).then((r) => r.data),
+  deactivate: (id: string) => api.post(/workflows//deactivate).then((r) => r.data)
 };
 
 export const categoriesApi = {
-  list: () => api.get<CategoryItem[]>('/categories').then((r) => r.data)
+  list: () => api.get<CategoryItem[]>('/categories').then((r) => r.data),
+  create: (data: { name: string; sortOrder?: number }) => api.post('/categories', data).then((r) => r.data),
+  update: (id: string, data: { name: string; sortOrder?: number }) => api.patch(/categories/, data).then((r) => r.data),
+  remove: (id: string) => api.delete(/categories/).then((r) => r.data)
 };
 
 export interface TodoItem { taskId: string; documentId: string; title: string; nodeName: string; priority: 'high' | 'normal' | 'low'; dueAt: string | null; submittedByName: string; documentStatus: string }
@@ -60,8 +68,35 @@ export const approvalsApi = {
   transfer: (taskId: string, toUserId: string, comment?: string) => api.post(`/approvals/tasks/${taskId}/transfer`, { toUserId, comment }).then((r) => r.data)
 };
 
+
+export interface RoleItem { id: string; name: string; code: string; description: string | null; permissions: Array<{ id: string; name: string; code: string }> }
+export interface PermissionItem { id: string; name: string; code: string }
+export interface DepartmentNode { id: string; name: string; managerId: string | null; children: DepartmentNode[] }
+export interface AuditLogItem { id: string; actorId: string; action: string; targetType: string; targetId: string | null; detail: Record<string, unknown> | null; ip: string | null; createdAt: string }
+export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[] }
+
+export const rolesApi = {
+  list: () => api.get<RoleItem[]>('/roles').then((r) => r.data),
+  permissions: () => api.get<PermissionItem[]>('/permissions').then((r) => r.data),
+  create: (data: { name: string; code: string; description?: string; permissionCodes?: string[] }) => api.post('/roles', data).then((r) => r.data),
+  update: (id: string, data: { name?: string; description?: string; permissionCodes?: string[] }) => api.patch(`/roles/${id}`, data).then((r) => r.data),
+  remove: (id: string) => api.delete(`/roles/${id}`).then((r) => r.data)
+};
+
+export const departmentsApi = {
+  tree: () => api.get<DepartmentNode[]>('/departments/tree').then((r) => r.data),
+  create: (data: { name: string; parentId?: string }) => api.post('/departments', data).then((r) => r.data)
+};
+
 export const usersApi = {
-  list: (params: Record<string, unknown> = {}) => api.get<Paged<{ id: string; username: string; name: string; roles: string[] }>>('/users', { params }).then((r) => r.data)
+  list: (params: Record<string, unknown> = {}) => api.get<Paged<UserItem>>('/users', { params }).then((r) => r.data),
+  create: (data: Record<string, unknown>) => api.post('/users', data).then((r) => r.data),
+  updateStatus: (id: string, status: string) => api.patch(`/users/${id}/status`, { status }).then((r) => r.data),
+  resetPassword: (id: string, newPassword: string) => api.post(`/users/${id}/reset-password`, { newPassword }).then((r) => r.data)
+};
+
+export const auditApi = {
+  list: (params: Record<string, unknown> = {}) => api.get<Paged<AuditLogItem>>('/audit-logs', { params }).then((r) => r.data)
 };
 
 export const dashboardApi = {
