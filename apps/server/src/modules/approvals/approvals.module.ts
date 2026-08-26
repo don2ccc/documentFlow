@@ -4,6 +4,7 @@ import { Document } from '../documents/entities/document.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { ApprovalEngineService } from './approval-engine.service';
+import { ApprovalTimeoutWorker } from './approval-timeout.worker';
 import { ApprovalsController } from './approvals.controller';
 import { ApprovalInstance } from './entities/approval-instance.entity';
 import { ApprovalRecord } from './entities/approval-record.entity';
@@ -16,7 +17,7 @@ import { ApprovalTask } from './entities/approval-task.entity';
     NotificationsModule
   ],
   controllers: [ApprovalsController],
-  providers: [ApprovalEngineService],
+  providers: [ApprovalEngineService, ApprovalTimeoutWorker],
   exports: [ApprovalEngineService]
 })
 export class ApprovalsModule {}

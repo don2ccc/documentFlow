@@ -11,4 +11,4 @@ export interface WorkflowEdgeDto {
 export interface WorkflowSnapshot { nodes: WorkflowNodeDto[]; edges: WorkflowEdgeDto[]; version: number }
 export interface UserBriefDto { id: string; username: string; name: string; departmentId?: string | null; roles: string[] }
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
-export interface AuthUser { id: string; username: string; roles: string[]; permissions: string[] }
+export interface AuthUser { id: string; username: string; roles: string[]; permissions: string[]; roleIds?: string[] }

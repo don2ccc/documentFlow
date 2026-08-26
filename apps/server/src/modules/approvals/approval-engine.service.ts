@@ -1,8 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, In, Repository } from 'typeorm';
 import {
-  ApprovalMethod, AssigneeType, DocumentStatus, InstanceStatus, NodeType, RecordAction,
+  ApprovalMethod, AssigneeType, AuthUser, DocumentStatus, InstanceStatus, NodeType, RecordAction,
   TaskStatus, WorkflowStatus, WorkflowSnapshot
 } from '@document-flow/shared';
 import { Notification } from '../notifications/entities/notification.entity';
@@ -26,7 +26,7 @@ export class ApprovalEngineService {
     private readonly dataSource: DataSource
   ) {}
 
-  async start(workflowId: string, documentId: string, initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
+  async submit(workflowId: string, documentId: string, initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
     const wf = await this.workflows.getById(workflowId);
     if (wf.status !== WorkflowStatus.Active) throw new BadRequestException('流程未启用');
     const nodes = wf.nodes.map((n) => {
@@ -64,6 +64,10 @@ export class ApprovalEngineService {
         { status: DocumentStatus.Archived, currentInstanceId: instance.id }
       );
       await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
+      return;
+    }
+    if (node.type === NodeType.Start) {
+      await this.enterNode(instance, await this.evaluateNext(instance, nodeId));
       return;
     }
     if (node.type === NodeType.Condition) {
@@ -130,6 +134,55 @@ export class ApprovalEngineService {
     const siblings = await this.taskRepo.findBy({ instanceId: instance.id, nodeId: task.nodeId, status: TaskStatus.Pending });
     if (node.approvalMethod === ApprovalMethod.Countersign && siblings.length > 0) return;
     await this.enterNode(instance, await this.evaluateNext(instance, task.nodeId));
+  }
+
+  async todos(user: AuthUser, query: { keyword?: string; page?: number; pageSize?: number }) {
+    const page = query.page ?? 1;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const qb = this.taskRepo
+      .createQueryBuilder('t')
+      .innerJoin(ApprovalInstance, 'i', 'i.id = t.instanceId')
+      .innerJoin(Document, 'd', 'd.id = i."documentId"')
+      .where('t.status = :pending', { pending: TaskStatus.Pending })
+      .andWhere(
+        new Brackets((b) => {
+          b.where('t."assigneeType" = :person AND t."assigneeId" = :uid', { person: AssigneeType.Person, uid: user.id });
+          if (user.roleIds?.length) {
+            b.orWhere('t."assigneeType" = :role AND t."assigneeRoleId" IN (:...roleIds)', { role: AssigneeType.Role, roleIds: user.roleIds });
+          }
+        })
+      );
+    if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
+    const rows = await qb
+      .select([
+        't.id AS "taskId"', 'd.id AS "documentId"', 'd.title AS title', 'd.status AS "documentStatus"',
+        'i.id AS "instanceId"', 'i."initiatorId" AS "initiatorId"', 't."dueAt" AS "dueAt"', 't."nodeId" AS "nodeId"'
+      ])
+      .orderBy('t."createdAt"', 'ASC')
+      .skip((page - 1) * pageSize).take(pageSize)
+      .getRawMany();
+    const total = await qb.clone().getCount();
+    const instanceIds = [...new Set(rows.map((r) => r.instanceId))];
+    const initiatorIds = [...new Set(rows.map((r) => r.initiatorId))];
+    const instances = instanceIds.length ? await this.instanceRepo.findBy({ id: In(instanceIds) }) : [];
+    const users = initiatorIds.length
+      ? await this.dataSource.query('SELECT id, name FROM users WHERE id = ANY($1)', [initiatorIds])
+      : [];
+    const userMap = new Map(users.map((u: { id: string; name: string }) => [u.id, u.name]));
+    const instanceMap = new Map(instances.map((i) => [i.id, i]));
+    const items = rows.map((r: any) => {
+      const inst = instanceMap.get(r.instanceId)!;
+      const node = inst.snapshot.nodes.find((n) => n.id === r.nodeId);
+      const dueAt = r.dueAt ? new Date(r.dueAt) : null;
+      const remaining = dueAt ? dueAt.getTime() - Date.now() : Number.POSITIVE_INFINITY;
+      const priority = remaining < 2 * 3600_000 ? 'high' : remaining < 24 * 3600_000 ? 'normal' : 'low';
+      return {
+        taskId: r.taskId, documentId: r.documentId, title: r.title, nodeName: node?.name ?? '审批',
+        priority, dueAt: dueAt?.toISOString() ?? null, submittedByName: userMap.get(r.initiatorId) ?? '未知',
+        documentStatus: r.documentStatus
+      };
+    });
+    return { items, total, page, pageSize };
   }
 
   private async resolveTargets(instance: ApprovalInstance, node: { approverRule?: string; approverValue?: string; config?: Record<string, unknown> }): Promise<ResolvedTarget[]> {

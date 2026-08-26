@@ -6,6 +6,7 @@ import { AuthUser } from '@document-flow/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateVersionDto } from './dto/create-version.dto';
+import { SubmitDocumentDto } from '../approvals/dto/submit-document.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentsService } from './documents.service';
 import { ALLOWED_MIME, MAX_FILE_SIZE } from './documents.storage';
@@ -28,6 +29,11 @@ export class DocumentsController {
   upload(@UploadedFile() file: Express.Multer.File | undefined, @Body() dto: UploadDocumentDto, @CurrentUser() user: AuthUser) {
     if (!file) throw new BadRequestException('请上传文件');
     return this.documents.upload(user.id, file, dto);
+  }
+
+  @Post(':id/submit')
+  submit(@Param('id') id: string, @Body() dto: SubmitDocumentDto, @CurrentUser() user: AuthUser) {
+    return this.documents.submit(user, id, dto.workflowId, dto.chosenApproverIds);
   }
 
   @Get(':id')

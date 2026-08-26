@@ -18,8 +18,9 @@ export class AuthService {
       throw new UnauthorizedException('用户名或密码错误');
     }
     const roles = user.roles.map((r) => r.code);
+    const roleIds = user.roles.map((r) => r.id);
     const permissions = [...new Set(user.roles.flatMap((r) => r.permissions.map((p) => p.code)))];
-    const accessToken = await this.jwt.signAsync({ sub: user.id, username: user.username, roles, permissions });
+    const accessToken = await this.jwt.signAsync({ sub: user.id, username: user.username, roles, permissions, roleIds });
     return {
       accessToken,
       user: { id: user.id, username: user.username, name: user.name, departmentId: user.departmentId, roles }

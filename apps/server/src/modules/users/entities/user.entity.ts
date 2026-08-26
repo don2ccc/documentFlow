@@ -14,6 +14,6 @@ export class User {
   @Column({ type: 'varchar', default: UserStatus.Pending }) status!: UserStatus;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
   @ManyToMany(() => Role, (r) => r.users)
-  @JoinTable({ name: 'user_roles' })
+  @JoinTable({ name: 'user_roles', joinColumn: { name: 'userId', referencedColumnName: 'id' }, inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' } })
   roles!: Role[];
 }

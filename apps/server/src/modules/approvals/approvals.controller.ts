@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { AuthUser } from '@document-flow/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -9,6 +9,11 @@ import { RejectTaskDto } from './dto/reject-task.dto';
 @Controller('approvals')
 export class ApprovalsController {
   constructor(private readonly engine: ApprovalEngineService) {}
+
+  @Get('todos')
+  todos(@CurrentUser() user: AuthUser, @Query() query: { keyword?: string; page?: number; pageSize?: number }) {
+    return this.engine.todos(user, query);
+  }
 
   @Post('tasks/:id/approve')
   @RequirePermission('approval:handle')

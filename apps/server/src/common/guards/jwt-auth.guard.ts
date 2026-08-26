@@ -15,7 +15,7 @@ export class JwtAuthGuard implements CanActivate {
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('未登录');
     try {
       const payload = await this.jwtService.verifyAsync(header.slice(7));
-      request.user = { id: payload.sub, username: payload.username, roles: payload.roles, permissions: payload.permissions };
+      request.user = { id: payload.sub, username: payload.username, roles: payload.roles ?? [], permissions: payload.permissions ?? [], roleIds: payload.roleIds ?? [] };
       return true;
     } catch {
       throw new UnauthorizedException('登录已过期，请重新登录');

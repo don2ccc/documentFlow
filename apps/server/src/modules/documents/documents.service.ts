@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser, DocumentStatus } from '@document-flow/shared';
+import { ApprovalEngineService } from '../approvals/approval-engine.service';
 import * as fs from 'fs';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -31,7 +32,8 @@ export class DocumentsService {
     @InjectRepository(DocumentVersion) private readonly versionRepo: Repository<DocumentVersion>,
     @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>,
     private readonly converter: ConverterService,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly engine: ApprovalEngineService
   ) {}
 
   async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
@@ -91,6 +93,17 @@ export class DocumentsService {
       }
       throw e;
     }
+  }
+
+  async submit(user: AuthUser, id: string, workflowId: string, chosenApproverIds?: Record<string, string>) {
+    const doc = await this.getDocument(id);
+    if (doc.ownerId !== user.id) throw new ForbiddenException('只能提交自己的文档');
+    if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(doc.status)) throw new BadRequestException('当前状态不可提交');
+    const instance = await this.engine.submit(workflowId, id, user.id, { chosenApproverIds });
+    doc.status = DocumentStatus.InApproval;
+    doc.currentInstanceId = instance.id;
+    await this.docRepo.save(doc);
+    return this.toDto(doc);
   }
 
   async getDetail(user: AuthUser, id: string) {
