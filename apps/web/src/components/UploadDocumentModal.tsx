@@ -40,7 +40,7 @@ export function UploadDocumentModal({ open, onClose, onSuccess }: { open: boolea
   };
 
   return (
-    <Modal title="上传新文档" open={open} onOk={submit} onCancel={onClose} confirmLoading={loading} destroyOnClose>
+    <Modal title="上传新文档" open={open} onOk={submit} onCancel={onClose} confirmLoading={loading} destroyOnHidden>
       <Form form={form} layout="vertical">
         <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
           <Input placeholder="文档标题" />

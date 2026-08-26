@@ -14,6 +14,9 @@ Object.defineProperty(window, 'matchMedia', {
   })
 });
 
+const originalGetComputedStyle = window.getComputedStyle.bind(window);
+(window as any).getComputedStyle = (elt: Element) => originalGetComputedStyle(elt);
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}

@@ -32,7 +32,7 @@ export function SubmitFlowModal({ documentId, open, onClose, onSuccess }: { docu
   };
 
   return (
-    <Modal title="选择审批流程" open={open} onOk={submit} onCancel={onClose} confirmLoading={loading} destroyOnClose>
+    <Modal title="选择审批流程" open={open} onOk={submit} onCancel={onClose} confirmLoading={loading} destroyOnHidden>
       <Select
         style={{ width: '100%' }}
         placeholder="选择已启用的审批流程"

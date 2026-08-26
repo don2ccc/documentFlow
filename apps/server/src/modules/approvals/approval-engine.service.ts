@@ -139,6 +139,37 @@ export class ApprovalEngineService {
     await this.enterNode(instance, await this.evaluateNext(instance, task.nodeId));
   }
 
+  async getTaskDetail(user: AuthUser, taskId: string) {
+    const task = await this.taskRepo.findOneBy({ id: taskId });
+    if (!task) throw new NotFoundException('任务不存在');
+    const instance = await this.instanceRepo.findOneBy({ id: task.instanceId });
+    if (!instance) throw new NotFoundException('实例不存在');
+    const isAdmin = user.permissions.includes('user:manage');
+    const canAct =
+      isAdmin ||
+      (task.assigneeType === AssigneeType.Person
+        ? task.assigneeId === user.id
+        : task.assigneeRoleId
+          ? task.claimedBy === user.id || (await this.isInRole(user.id, task.assigneeRoleId))
+          : false);
+    if (!isAdmin && !canAct && instance.initiatorId !== user.id) throw new ForbiddenException('无权查看该任务');
+    const doc = await this.documentsRepo.findOneBy({ id: instance.documentId });
+    const node = instance.snapshot.nodes.find((n) => n.id === task.nodeId);
+    const progress = await this.getProgress(user, instance.id);
+    return {
+      taskId: task.id,
+      taskStatus: task.status,
+      documentId: instance.documentId,
+      document: doc
+        ? { id: doc.id, title: doc.title, description: doc.description, amount: doc.amount, status: doc.status }
+        : null,
+      nodeName: node?.name ?? '审批',
+      canApprove: canAct && task.status === 'pending' && instance.status === 'running',
+      instanceStatus: instance.status,
+      progress
+    };
+  }
+
   async todos(user: AuthUser, query: { keyword?: string; page?: number; pageSize?: number }) {
     const page = query.page ?? 1;
     const pageSize = Math.min(query.pageSize ?? 20, 100);

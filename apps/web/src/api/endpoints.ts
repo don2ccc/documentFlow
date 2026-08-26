@@ -44,6 +44,26 @@ export const categoriesApi = {
   list: () => api.get<CategoryItem[]>('/categories').then((r) => r.data)
 };
 
+export interface TodoItem { taskId: string; documentId: string; title: string; nodeName: string; priority: 'high' | 'normal' | 'low'; dueAt: string | null; submittedByName: string; documentStatus: string }
+export interface TaskDetail {
+  taskId: string; taskStatus: string; documentId: string;
+  document: { id: string; title: string; description: string | null; amount: string | null; status: string } | null;
+  nodeName: string; canApprove: boolean; instanceStatus: string;
+  progress: { instanceId: string; status: string; nodes: Array<{ nodeId: string; name: string; status: string; approvers: Array<{ actorId: string; action: string; comment: string | null; time: string }> }> }
+}
+
+export const approvalsApi = {
+  todos: (params: Record<string, unknown> = {}) => api.get<Paged<TodoItem>>('/approvals/todos', { params }).then((r) => r.data),
+  taskDetail: (taskId: string) => api.get<TaskDetail>(`/approvals/tasks/${taskId}`).then((r) => r.data),
+  approve: (taskId: string, comment?: string) => api.post(`/approvals/tasks/${taskId}/approve`, { comment }).then((r) => r.data),
+  reject: (taskId: string, comment: string) => api.post(`/approvals/tasks/${taskId}/reject`, { comment }).then((r) => r.data),
+  transfer: (taskId: string, toUserId: string, comment?: string) => api.post(`/approvals/tasks/${taskId}/transfer`, { toUserId, comment }).then((r) => r.data)
+};
+
+export const usersApi = {
+  list: (params: Record<string, unknown> = {}) => api.get<Paged<{ id: string; username: string; name: string; roles: string[] }>>('/users', { params }).then((r) => r.data)
+};
+
 export const dashboardApi = {
   summary: () =>
     api
