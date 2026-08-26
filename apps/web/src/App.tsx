@@ -1,0 +1,50 @@
+import { ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { AppLayout } from './components/AppLayout';
+import { LoginPage } from './pages/LoginPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { DocumentsPage } from './pages/DocumentsPage';
+import { DocumentDetailPage } from './pages/DocumentDetailPage';
+import { ApprovalsPage } from './pages/ApprovalsPage';
+import { ApprovalTaskPage } from './pages/ApprovalTaskPage';
+import { NotificationsPage } from './pages/NotificationsPage';
+import { UsersPage } from './pages/admin/UsersPage';
+import { RolesPage } from './pages/admin/RolesPage';
+import { CategoriesPage } from './pages/admin/CategoriesPage';
+import { WorkflowsPage } from './pages/admin/WorkflowsPage';
+import { WorkflowEditPage } from './pages/admin/WorkflowEditPage';
+import { AuditLogsPage } from './pages/admin/AuditLogsPage';
+
+export function App() {
+  return (
+    <ConfigProvider locale={zhCN}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/documents" element={<DocumentsPage />} />
+                <Route path="/documents/:id" element={<DocumentDetailPage />} />
+                <Route path="/approvals" element={<ApprovalsPage />} />
+                <Route path="/approvals/tasks/:id" element={<ApprovalTaskPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/admin/users" element={<UsersPage />} />
+                <Route path="/admin/roles" element={<RolesPage />} />
+                <Route path="/admin/categories" element={<CategoriesPage />} />
+                <Route path="/admin/workflows" element={<WorkflowsPage />} />
+                <Route path="/admin/workflows/:id" element={<WorkflowEditPage />} />
+                <Route path="/admin/audit" element={<AuditLogsPage />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Route>
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ConfigProvider>
+  );
+}
