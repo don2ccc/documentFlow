@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser, DocumentStatus } from '@document-flow/shared';
 import * as fs from 'fs';
 import { CreateVersionDto } from './dto/create-version.dto';
@@ -66,18 +66,31 @@ export class DocumentsService {
   async findVisible(userId: string, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
     const page = query.page ?? 1;
     const pageSize = Math.min(query.pageSize ?? 20, 100);
-    let qb = this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId });
+    const applyFilters = (qb: SelectQueryBuilder<Document>) => {
+      if (query.status) qb.andWhere('d.status = :status', { status: query.status });
+      if (query.categoryId) qb.andWhere('d.categoryId = :categoryId', { categoryId: query.categoryId });
+      if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
+      return qb;
+    };
+    const finish = async (qb: SelectQueryBuilder<Document>) => {
+      const [items, total] = await qb.orderBy('d.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
+      const dtos = await Promise.all(items.map((d) => this.toDto(d)));
+      return { items: dtos, total, page, pageSize };
+    };
     try {
-      qb = this.docRepo.createQueryBuilder('d').where('(d.ownerId = :userId OR EXISTS (SELECT 1 FROM approval_instances ai WHERE ai."documentId" = d.id AND (ai."initiatorId" = :userId OR ai.id IN (SELECT ar."instanceId" FROM approval_records ar WHERE ar."actorId" = :userId))))', { userId });
-    } catch {
-      // 审批表未创建时退化为仅本人可见
+      const qb = applyFilters(
+        this.docRepo.createQueryBuilder('d').where(
+          '(d.ownerId = :userId OR EXISTS (SELECT 1 FROM approval_instances ai WHERE ai."documentId" = d.id AND (ai."initiatorId" = :userId OR ai.id IN (SELECT ar."instanceId" FROM approval_records ar WHERE ar."actorId" = :userId))))',
+          { userId }
+        )
+      );
+      return await finish(qb);
+    } catch (e) {
+      if (String((e as Error).message).includes('does not exist')) {
+        return await finish(applyFilters(this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId })));
+      }
+      throw e;
     }
-    if (query.status) qb.andWhere('d.status = :status', { status: query.status });
-    if (query.categoryId) qb.andWhere('d.categoryId = :categoryId', { categoryId: query.categoryId });
-    if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
-    const [items, total] = await qb.orderBy('d.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
-    const dtos = await Promise.all(items.map((d) => this.toDto(d)));
-    return { items: dtos, total, page, pageSize };
   }
 
   async getDetail(user: AuthUser, id: string) {
