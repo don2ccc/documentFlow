@@ -9,5 +9,6 @@
     "test:web": "npm test -w apps/web",
     "build": "npm run build -w packages/shared && npm run build -w apps/server && npm run build -w apps/web",
     "postinstall": "npm run build -w packages/shared"
-  }
+  },
+  "overrides": { "pg": "8.13.0" }
 }
