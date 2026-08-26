@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { DocumentStatus } from '@document-flow/shared';
+import { DataSource, Repository } from 'typeorm';
+import { AuthUser, DocumentStatus } from '@document-flow/shared';
 import * as fs from 'fs';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -30,7 +30,8 @@ export class DocumentsService {
     @InjectRepository(Document) private readonly docRepo: Repository<Document>,
     @InjectRepository(DocumentVersion) private readonly versionRepo: Repository<DocumentVersion>,
     @InjectRepository(ConversionJob) private readonly jobRepo: Repository<ConversionJob>,
-    private readonly converter: ConverterService
+    private readonly converter: ConverterService,
+    private readonly dataSource: DataSource
   ) {}
 
   async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
@@ -62,16 +63,43 @@ export class DocumentsService {
     return this.toDto(doc, version);
   }
 
-  async findMy(userId: string, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
+  async findVisible(userId: string, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
     const page = query.page ?? 1;
     const pageSize = Math.min(query.pageSize ?? 20, 100);
-    const qb = this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId });
+    let qb = this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId });
+    try {
+      qb = this.docRepo.createQueryBuilder('d').where('(d.ownerId = :userId OR EXISTS (SELECT 1 FROM approval_instances ai WHERE ai."documentId" = d.id AND (ai."initiatorId" = :userId OR ai.id IN (SELECT ar."instanceId" FROM approval_records ar WHERE ar."actorId" = :userId))))', { userId });
+    } catch {
+      // 审批表未创建时退化为仅本人可见
+    }
     if (query.status) qb.andWhere('d.status = :status', { status: query.status });
     if (query.categoryId) qb.andWhere('d.categoryId = :categoryId', { categoryId: query.categoryId });
     if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
     const [items, total] = await qb.orderBy('d.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
     const dtos = await Promise.all(items.map((d) => this.toDto(d)));
     return { items: dtos, total, page, pageSize };
+  }
+
+  async getDetail(user: AuthUser, id: string) {
+    const doc = await this.assertCanView(user, id);
+    const versions = await this.versionRepo.find({ where: { documentId: id }, order: { versionNo: 'DESC' } });
+    return { ...(await this.toDto(doc)), versions, progress: null };
+  }
+
+  async assertCanView(user: AuthUser, documentId: string): Promise<Document> {
+    const doc = await this.getDocument(documentId);
+    if (user.permissions.includes('user:manage')) return doc;
+    if (doc.ownerId === user.id) return doc;
+    try {
+      const involved = await this.dataSource.query(
+        'SELECT COUNT(*)::int AS c FROM approval_instances ai WHERE ai."documentId" = $1 AND (ai."initiatorId" = $2 OR EXISTS (SELECT 1 FROM approval_records ar WHERE ar."instanceId" = ai.id AND ar."actorId" = $2))',
+        [documentId, user.id]
+      );
+      if (Number(involved[0]?.c ?? 0) > 0) return doc;
+    } catch {
+      // 审批表未创建（Task 12 之前），跳过参与人检查
+    }
+    throw new ForbiddenException('无权查看该文档');
   }
 
   async getDocument(id: string): Promise<Document> {
@@ -112,24 +140,21 @@ export class DocumentsService {
     return this.toDto(doc, version);
   }
 
-  async listVersions(userId: string, documentId: string) {
-    const doc = await this.getDocument(documentId);
-    this.assertBasicView(userId, doc);
+  async listVersions(user: AuthUser, documentId: string) {
+    await this.assertCanView(user, documentId);
     return this.versionRepo.find({ where: { documentId }, order: { versionNo: 'DESC' } });
   }
 
-  async streamDownload(userId: string, documentId: string, versionId: string, res: any) {
-    const doc = await this.getDocument(documentId);
-    this.assertBasicView(userId, doc);
+  async streamDownload(user: AuthUser, documentId: string, versionId: string, res: any) {
+    await this.assertCanView(user, documentId);
     const version = await this.versionRepo.findOneBy({ id: versionId, documentId });
     if (!version) throw new NotFoundException('版本不存在');
     if (!fs.existsSync(version.filePath)) throw new NotFoundException('文件已丢失');
     res.download(version.filePath, version.fileName);
   }
 
-  async streamPreview(userId: string, documentId: string, versionId: string, res: any) {
-    const doc = await this.getDocument(documentId);
-    this.assertBasicView(userId, doc);
+  async streamPreview(user: AuthUser, documentId: string, versionId: string, res: any) {
+    await this.assertCanView(user, documentId);
     const version = await this.versionRepo.findOneBy({ id: versionId, documentId });
     if (!version) throw new NotFoundException('版本不存在');
     const job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
@@ -142,11 +167,11 @@ export class DocumentsService {
     res.sendFile(path.resolve(job.previewPath));
   }
 
-  async retryConvert(userId: string, versionId: string) {
+  async retryConvert(user: AuthUser, versionId: string) {
     const version = await this.versionRepo.findOneBy({ id: versionId });
     if (!version) throw new NotFoundException('版本不存在');
     const doc = await this.getDocument(version.documentId);
-    if (doc.ownerId !== userId && !['user:manage'].some((p) => p)) throw new ForbiddenException('无权操作');
+    if (doc.ownerId !== user.id && !user.permissions.includes('user:manage')) throw new ForbiddenException('无权操作');
     let job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
     if (!job) job = await this.jobRepo.save(this.jobRepo.create({ documentVersionId: versionId }));
     job.status = 'pending';

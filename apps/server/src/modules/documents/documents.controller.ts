@@ -30,10 +30,15 @@ export class DocumentsController {
     return this.documents.upload(user.id, file, dto);
   }
 
+  @Get(':id')
+  getDetail(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documents.getDetail(user, id);
+  }
+
   @Get()
   @RequirePermission('document:upload')
   findMy(@Query() query: any, @CurrentUser() user: AuthUser) {
-    return this.documents.findMy(user.id, query);
+    return this.documents.findVisible(user.id, query);
   }
 
   @Post(':id/versions')
@@ -46,21 +51,21 @@ export class DocumentsController {
 
   @Get(':id/versions/:versionId/preview')
   preview(@Param('id') id: string, @Param('versionId') versionId: string, @CurrentUser() user: AuthUser, @Res() res: any) {
-    return this.documents.streamPreview(user.id, id, versionId, res);
+    return this.documents.streamPreview(user, id, versionId, res);
   }
 
   @Post('versions/:versionId/retry-convert')
   retryConvert(@Param('versionId') versionId: string, @CurrentUser() user: AuthUser) {
-    return this.documents.retryConvert(user.id, versionId);
+    return this.documents.retryConvert(user, versionId);
   }
 
   @Get(':id/versions')
   listVersions(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.documents.listVersions(user.id, id);
+    return this.documents.listVersions(user, id);
   }
 
   @Get(':id/versions/:versionId/download')
   download(@Param('id') id: string, @Param('versionId') versionId: string, @CurrentUser() user: AuthUser, @Res() res: any) {
-    return this.documents.streamDownload(user.id, id, versionId, res);
+    return this.documents.streamDownload(user, id, versionId, res);
   }
 }
