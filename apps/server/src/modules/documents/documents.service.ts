@@ -106,6 +106,25 @@ export class DocumentsService {
     return this.toDto(doc);
   }
 
+  async withdraw(user: AuthUser, id: string) {
+    const doc = await this.getDocument(id);
+    if (doc.ownerId !== user.id) throw new ForbiddenException('只能撤回自己的文档');
+    if (!doc.currentInstanceId) throw new BadRequestException('文档未在审批中');
+    await this.engine.withdraw(doc.currentInstanceId, user.id);
+    doc.status = DocumentStatus.Draft;
+    doc.currentInstanceId = null;
+    await this.docRepo.save(doc);
+    return this.toDto(doc);
+  }
+
+  async remind(user: AuthUser, id: string) {
+    const doc = await this.getDocument(id);
+    if (doc.ownerId !== user.id) throw new ForbiddenException('只能催办自己的文档');
+    if (!doc.currentInstanceId) throw new BadRequestException('文档未在审批中');
+    await this.engine.remind(doc.currentInstanceId, user.id);
+    return { ok: true };
+  }
+
   async getDetail(user: AuthUser, id: string) {
     const doc = await this.assertCanView(user, id);
     const versions = await this.versionRepo.find({ where: { documentId: id }, order: { versionNo: 'DESC' } });

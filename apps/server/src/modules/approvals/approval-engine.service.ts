@@ -185,6 +185,94 @@ export class ApprovalEngineService {
     return { items, total, page, pageSize };
   }
 
+  async transfer(taskId: string, actorId: string, toUserId: string, comment?: string) {
+    const task = await this.taskRepo.findOneBy({ id: taskId });
+    if (!task || task.status !== TaskStatus.Pending) throw new BadRequestException('任务已被处理');
+    const canAct =
+      task.assigneeType === AssigneeType.Person
+        ? task.assigneeId === actorId
+        : task.assigneeRoleId
+          ? task.claimedBy === actorId || (await this.isInRole(actorId, task.assigneeRoleId))
+          : false;
+    if (!canAct) throw new ForbiddenException('无权转办该任务');
+    const instance = await this.instanceRepo.findOneBy({ id: task.instanceId });
+    if (!instance || instance.status !== InstanceStatus.Running) throw new BadRequestException('流程已结束');
+    const node = instance.snapshot.nodes.find((n) => n.id === task.nodeId)!;
+    const dueAt = node.timeoutHours ? new Date(Date.now() + node.timeoutHours * 3600_000) : null;
+    task.status = TaskStatus.Transferred;
+    await this.taskRepo.save(task);
+    await this.taskRepo.save(
+      this.taskRepo.create({
+        instanceId: task.instanceId, nodeId: task.nodeId, assigneeType: AssigneeType.Person, assigneeId: toUserId,
+        assigneeRoleId: null, status: TaskStatus.Pending, dueAt
+      })
+    );
+    await this.recordRepo.save(
+      this.recordRepo.create({ instanceId: task.instanceId, taskId: task.id, actorId, action: RecordAction.Transfer, comment: comment ?? null })
+    );
+    await this.notify([toUserId], 'new_task', '任务已转办给您', `文档审批：${node.name}`, instance.documentId);
+  }
+
+  async withdraw(instanceId: string, actorId: string) {
+    const instance = await this.instanceRepo.findOneBy({ id: instanceId });
+    if (!instance) throw new NotFoundException('实例不存在');
+    if (instance.initiatorId !== actorId) throw new ForbiddenException('只有发起人可以撤回');
+    if (instance.status !== InstanceStatus.Running) throw new BadRequestException('当前状态不可撤回');
+    const processed = await this.recordRepo.find({
+      where: { instanceId, action: In([RecordAction.Approve, RecordAction.Reject, RecordAction.Transfer]) }
+    });
+    if (processed.length > 0) throw new BadRequestException('已有节点被处理，无法撤回');
+    instance.status = InstanceStatus.Withdrawn;
+    instance.finishedAt = new Date();
+    await this.instanceRepo.save(instance);
+    await this.taskRepo.update({ instanceId, status: TaskStatus.Pending }, { status: TaskStatus.Voided });
+    await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Draft });
+    await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Withdraw }));
+  }
+
+  async remind(instanceId: string, actorId: string) {
+    const instance = await this.instanceRepo.findOneBy({ id: instanceId });
+    if (!instance) throw new NotFoundException('实例不存在');
+    if (instance.initiatorId !== actorId) throw new ForbiddenException('只有发起人可以催办');
+    if (instance.status !== InstanceStatus.Running) throw new BadRequestException('当前状态不可催办');
+    const tasks = await this.taskRepo.findBy({ instanceId, status: TaskStatus.Pending });
+    const userIds = tasks.map((t) => t.assigneeId).filter((id): id is string => !!id);
+    if (userIds.length) {
+      await this.notify([...new Set(userIds)], 'remind', '催办提醒', '发起人正在催办，请尽快处理。', instance.documentId);
+    }
+    await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Remind }));
+  }
+
+  async getProgress(user: AuthUser, instanceId: string) {
+    const instance = await this.instanceRepo.findOneBy({ id: instanceId });
+    if (!instance) throw new NotFoundException('实例不存在');
+    const [records, tasks] = await Promise.all([
+      this.recordRepo.find({ where: { instanceId }, order: { createdAt: 'ASC' } }),
+      this.taskRepo.find({ where: { instanceId } })
+    ]);
+    const isParticipant =
+      instance.initiatorId === user.id ||
+      user.permissions.includes('user:manage') ||
+      records.some((r) => r.actorId === user.id) ||
+      tasks.some((t) => t.assigneeId === user.id);
+    if (!isParticipant) throw new ForbiddenException('无权查看该审批进度');
+    const nodes = instance.snapshot.nodes.map((n) => {
+      const nodeTasks = tasks.filter((t) => t.nodeId === n.id);
+      const nodeRecords = records.filter((r) => nodeTasks.some((t) => t.id === r.taskId));
+      const status =
+        n.id === instance.currentNodeId
+          ? 'current'
+          : nodeTasks.length === 0 || nodeTasks.every((t) => t.status !== TaskStatus.Pending)
+            ? 'done'
+            : 'todo';
+      const approvers = nodeRecords.map((r) => ({
+        actorId: r.actorId, action: r.action, comment: r.comment, time: r.createdAt.toISOString()
+      }));
+      return { nodeId: n.id, name: n.name, status, approvers };
+    });
+    return { instanceId, status: instance.status, nodes };
+  }
+
   private async resolveTargets(instance: ApprovalInstance, node: { approverRule?: string; approverValue?: string; config?: Record<string, unknown> }): Promise<ResolvedTarget[]> {
     const rule = node.approverRule;
     if (rule === AssigneeType.Person) {

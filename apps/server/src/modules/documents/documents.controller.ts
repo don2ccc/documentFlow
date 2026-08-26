@@ -31,6 +31,16 @@ export class DocumentsController {
     return this.documents.upload(user.id, file, dto);
   }
 
+  @Post(':id/withdraw')
+  withdraw(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documents.withdraw(user, id);
+  }
+
+  @Post(':id/remind')
+  remind(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documents.remind(user, id);
+  }
+
   @Post(':id/submit')
   submit(@Param('id') id: string, @Body() dto: SubmitDocumentDto, @CurrentUser() user: AuthUser) {
     return this.documents.submit(user, id, dto.workflowId, dto.chosenApproverIds);
