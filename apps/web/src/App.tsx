@@ -20,6 +20,7 @@ import { WorkflowEditPage } from './pages/admin/WorkflowEditPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
 import { SystemSettingsPage } from './pages/admin/SystemSettingsPage';
 import { DatabaseManagementPage } from './pages/admin/DatabaseManagementPage';
+import { DormitoryPage } from './pages/admin/DormitoryPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 
@@ -49,7 +50,7 @@ export function App() {
                 <Route path="/admin/audit" element={<AuditLogsPage />} />
                 <Route path="/admin/settings" element={<SystemSettingsPage />} />
                 <Route path="/admin/database" element={<DatabaseManagementPage />} />
-                <Route path="/admin/dormitory" element={<ComingSoonPage />} />
+                <Route path="/admin/dormitory" element={<DormitoryPage />} />
                 <Route path="/admin/labor-protection" element={<ComingSoonPage />} />
                 <Route path="/production" element={<ComingSoonPage />} />
                 <Route path="/hr" element={<ComingSoonPage />} />

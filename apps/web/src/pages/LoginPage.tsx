@@ -153,7 +153,7 @@ export function LoginPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
       <Card style={{ width: 380 }}>
-        <Typography.Title level={3} style={{ textAlign: 'center' }}>SPO办公系统</Typography.Title>
+        <Typography.Title level={3} style={{ textAlign: 'center' }}>WorkFlow System For SPO</Typography.Title>
         <Form onFinish={onFinish} layout="vertical">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input placeholder="用户名" size="large" autoComplete="username" />

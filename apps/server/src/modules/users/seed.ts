@@ -17,7 +17,8 @@ const PERMISSIONS = [
   ['查看审计', 'audit:view'],
   ['查看仪表盘', 'dashboard:view'],
   ['管理数据库', 'database:manage'],
-  ['申请查询', 'application:query']
+
+  ['管理宿舍', 'dormitory:manage'],  ['申请查询', 'application:query']
 ] as const;
 
 export async function seedAdmin(ds: DataSource) {

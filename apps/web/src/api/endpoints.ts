@@ -233,3 +233,73 @@ export const databaseApi = {
       .then((r) => r.data);
   }
 };
+
+// ======宿舍管理 =====
+export type RoomType = '四人间' | '双人间' | '单人间';
+export type BedStatus = '空闲' | '已住' | '维修中' | '禁用';
+export type AssetType = '空调' | '床' | '柜子' | '热水器' | '其他';
+export type AssetStatus = '正常' | '损坏' | '已报废';
+export type ResidentStatus = '在住' | '已退宿';
+
+export interface Building { id: string; name: string; address: string | null; totalFloors: number; notes: string | null; createdAt: string; }
+export interface Room { id: string; buildingId: string; buildingName?: string; floor: number; roomNo: string; type: RoomType; totalBeds: number; bedTotal?: number; bedOccupied?: number; notes: string | null; createdAt: string; }
+export interface Bed { id: string; roomId: string; roomNo?: string; buildingName?: string; bedNo: string; status: BedStatus; notes: string | null; }
+export interface Asset { id: string; roomId: string; roomNo?: string; buildingName?: string; name: string; type: AssetType; brand: string | null; model: string | null; serialNo: string | null; purchaseDate: string | null; status: AssetStatus; damageNote: string | null; createdAt: string; }
+export interface Resident { id: string; employeeNo: string; name: string; department: string | null; phone: string | null; hireDate: string | null; bedId: string | null; bedNo: string | null; roomNo: string | null; floor: number | null; buildingName: string | null; roomType: string | null; checkInDate: string; checkOutDate: string | null; status: ResidentStatus; notes: string | null; createdAt: string; }
+export interface DormitoryOverview { buildings: number; rooms: number; beds: number; occupiedBeds: number; residents: number; availableBeds: number; arrears: number; arrearsCount: number; }
+
+export interface MeterReading { id: string; roomId: string; roomNo?: string; buildingName?: string; period: string; electricReading: string; waterReading: string; electricUsage: string; waterUsage: string; publicElectricUsage: string; publicWaterUsage: string; readingDate: string; recordedBy: string | null; notes: string | null; createdAt: string; }
+
+export type BillStatus = '待缴费' | '部分缴费' | '已缴费' | '逾期' | '作废';
+export interface Bill { id: string; residentId: string; resident?: { id: string; employeeNo: string; name: string; department: string | null; bedId: string | null } | null; period: string; electricFee: string; waterFee: string; roomFee: string; deposit: string; otherFee: string; totalAmount: string; paidAmount: string; status: BillStatus; dueDate: string; paidAt: string | null; notes: string | null; createdAt: string; arrears?: number; }
+
+export interface BillArrears {
+  id: string; residentId: string; period: string;
+  electricFee: string; waterFee: string; roomFee: string; deposit: string; otherFee: string;
+  totalAmount: string; paidAmount: string; status: BillStatus;
+  paidAt: string | null; dueDate: string; notes: string | null; createdAt: string;
+  arrears: number;
+  resident: { id: string; employeeNo: string; name: string; department: string | null; phone: string | null; bed: { bedNo: string; room: { roomNo: string; floor: number; building: { id: string; name: string } | null } | null } | null } | null;
+}
+
+export interface BillStatistics { period: string | null; billCount: number; totalAmount: number; paidAmount: number; arrears: number; paidCount: number; partialCount: number; unpaidCount: number; overdueCount: number; voidCount: number; }
+
+export interface GenerateBillsResult { generated: number; skipped: number; bills: Bill[]; }
+
+export const dormitoryApi = {
+  overview: () => api.get<DormitoryOverview>('/dormitory/overview').then((r) => r.data),
+  listBuildings: () => api.get<Building[]>('/dormitory/buildings').then((r) => r.data),
+  createBuilding: (body: Partial<Building>) => api.post<Building>('/dormitory/buildings', body).then((r) => r.data),
+  updateBuilding: (id: string, body: Partial<Building>) => api.patch<Building>(`/dormitory/buildings/${id}`, body).then((r) => r.data),
+  removeBuilding: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/buildings/${id}`).then((r) => r.data),
+  listRooms: (buildingId?: string) => api.get<Room[]>('/dormitory/rooms', { params: buildingId ? { buildingId } : undefined }).then((r) => r.data),
+  createRoom: (body: Partial<Room>) => api.post<Room>('/dormitory/rooms', body).then((r) => r.data),
+  updateRoom: (id: string, body: Partial<Room>) => api.patch<Room>(`/dormitory/rooms/${id}`, body).then((r) => r.data),
+  removeRoom: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/rooms/${id}`).then((r) => r.data),
+  listBeds: (roomId?: string) => api.get<Bed[]>('/dormitory/beds', { params: roomId ? { roomId } : undefined }).then((r) => r.data),
+  createBed: (body: Partial<Bed>) => api.post<Bed>('/dormitory/beds', body).then((r) => r.data),
+  updateBed: (id: string, body: Partial<Bed>) => api.patch<Bed>(`/dormitory/beds/${id}`, body).then((r) => r.data),
+  removeBed: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/beds/${id}`).then((r) => r.data),
+  listAssets: (roomId?: string) => api.get<Asset[]>('/dormitory/assets', { params: roomId ? { roomId } : undefined }).then((r) => r.data),
+  createAsset: (body: Partial<Asset>) => api.post<Asset>('/dormitory/assets', body).then((r) => r.data),
+  updateAsset: (id: string, body: Partial<Asset>) => api.patch<Asset>(`/dormitory/assets/${id}`, body).then((r) => r.data),
+  removeAsset: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/assets/${id}`).then((r) => r.data),
+  reportDamage: (id: string, note: string) => api.post<Asset>(`/dormitory/assets/${id}/damage`, { note }).then((r) => r.data),
+  listResidents: () => api.get<Resident[]>('/dormitory/residents').then((r) => r.data),
+  createResident: (body: Partial<Resident>) => api.post<Resident>('/dormitory/residents', body).then((r) => r.data),
+  updateResident: (id: string, body: Partial<Resident>) => api.patch<Resident>(`/dormitory/residents/${id}`, body).then((r) => r.data),
+  removeResident: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/residents/${id}`).then((r) => r.data),
+  // ===== 抄表 =====
+  listMeterReadings: (roomId?: string, period?: string) => api.get<MeterReading[]>('/dormitory/meter-readings', { params: { ...(roomId ? { roomId } : {}), ...(period ? { period } : {}) } }).then((r) => r.data),
+  recordMeterReading: (body: Partial<MeterReading>) => api.post<MeterReading>('/dormitory/meter-readings', body).then((r) => r.data),
+  updateMeterReading: (id: string, body: Partial<MeterReading>) => api.patch<MeterReading>(`/dormitory/meter-readings/${id}`, body).then((r) => r.data),
+  removeMeterReading: (id: string) => api.delete<{ ok: boolean }>(`/dormitory/meter-readings/${id}`).then((r) => r.data),
+  // ===== 账单 =====
+  generateBills: (body: { period: string; electricRate?: number; waterRate?: number; roomRate?: number; dueDate: string; notes?: string }) => api.post<GenerateBillsResult>('/dormitory/bills/generate', body).then((r) => r.data),
+  listBills: (params?: { period?: string; residentId?: string; status?: string }) => api.get<Bill[]>('/dormitory/bills', { params: params || {} }).then((r) => r.data),
+  billStatistics: (period?: string) => api.get<BillStatistics>('/dormitory/bills/statistics', { params: period ? { period } : {} }).then((r) => r.data),
+  arrearsList: () => api.get<BillArrears[]>('/dormitory/bills/arrears').then((r) => r.data),
+  markBillPaid: (id: string, paidAmount: number, notes?: string) => api.post<Bill>(`/dormitory/bills/${id}/pay`, { paidAmount, notes }).then((r) => r.data),
+  voidBill: (id: string) => api.post<Bill>(`/dormitory/bills/${id}/void`, {}).then((r) => r.data),
+  getBill: (id: string) => api.get<Bill>(`/dormitory/bills/${id}`).then((r) => r.data)
+};

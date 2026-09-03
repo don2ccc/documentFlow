@@ -18,6 +18,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { CoreSettingsModule } from './modules/core-settings/core-settings.module';
+import { DormitoryModule } from './modules/dormitory/dormitory.module';
 
 @Module({
   imports: [
@@ -44,7 +45,8 @@ import { CoreSettingsModule } from './modules/core-settings/core-settings.module
     DashboardModule,
     SystemSettingsModule,
     DatabaseModule,
-    CoreSettingsModule
+    CoreSettingsModule,
+    DormitoryModule
   ],
   controllers: [HealthController],
   providers: [
