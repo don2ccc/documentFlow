@@ -82,10 +82,6 @@ export function AppLayout() {
     });
   }
 
-  // 默认全部展开，用户可点击折叠
-  const defaultOpenKeys = [KEY_WORKFLOW, KEY_ADMIN, KEY_PRODUCTION, KEY_HR];
-  if (systemAdminChildren.length) defaultOpenKeys.push(KEY_SYSTEM);
-
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider theme="dark" width={220}>
@@ -94,7 +90,6 @@ export function AppLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={defaultOpenKeys}
           items={items}
           onClick={(e) => navigate(e.key)}
         />
