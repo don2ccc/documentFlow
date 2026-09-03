@@ -202,3 +202,34 @@ export const applicationsApi = {
   remove: (id: string) =>
     api.delete(`/applications/${id}`).then((r) => r.data)
 };
+export interface DatabaseBackup {
+  filename: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface DatabaseInfo {
+  host: string;
+  port: string;
+  database: string;
+  user: string;
+  backupCount: number;
+  backupTotalSize: number;
+}
+
+export const databaseApi = {
+  info: () => api.get<DatabaseInfo>('/database/info').then((r) => r.data),
+  list: () => api.get<DatabaseBackup[]>('/database/backups').then((r) => r.data),
+  create: () => api.post<DatabaseBackup & { ok: boolean; createdBy: string | null }>('/database/backups').then((r) => r.data),
+  remove: (filename: string) => api.delete<{ ok: boolean }>(`/database/backups/${encodeURIComponent(filename)}`).then((r) => r.data),
+  restore: (file: File, onProgress?: (e: { loaded: number; total: number }) => void) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api
+      .post<{ ok: boolean; message: string }>('/database/restore', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => onProgress?.({ loaded: e.loaded, total: e.total ?? 0 })
+      })
+      .then((r) => r.data);
+  }
+};

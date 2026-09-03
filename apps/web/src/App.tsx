@@ -19,6 +19,7 @@ import { WorkflowsPage } from './pages/admin/WorkflowsPage';
 import { WorkflowEditPage } from './pages/admin/WorkflowEditPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
 import { SystemSettingsPage } from './pages/admin/SystemSettingsPage';
+import { DatabaseManagementPage } from './pages/admin/DatabaseManagementPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 
 export function App() {
@@ -46,6 +47,7 @@ export function App() {
                 <Route path="/admin/workflows/:id" element={<WorkflowEditPage />} />
                 <Route path="/admin/audit" element={<AuditLogsPage />} />
                 <Route path="/admin/settings" element={<SystemSettingsPage />} />
+                <Route path="/admin/database" element={<DatabaseManagementPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>

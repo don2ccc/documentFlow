@@ -16,6 +16,7 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
+import { DatabaseModule } from './modules/database/database.module';
 import { CoreSettingsModule } from './modules/core-settings/core-settings.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { CoreSettingsModule } from './modules/core-settings/core-settings.module
     AuditModule,
     DashboardModule,
     SystemSettingsModule,
+    DatabaseModule,
     CoreSettingsModule
   ],
   controllers: [HealthController],

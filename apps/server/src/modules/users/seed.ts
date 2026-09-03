@@ -16,6 +16,7 @@ const PERMISSIONS = [
   ['管理系统设置', 'setting:manage'],
   ['查看审计', 'audit:view'],
   ['查看仪表盘', 'dashboard:view'],
+  ['管理数据库', 'database:manage'],
   ['申请查询', 'application:query']
 ] as const;
 

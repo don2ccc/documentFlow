@@ -1,6 +1,6 @@
 import { Layout, Menu, Dropdown, Badge } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { HomeOutlined, AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined, ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined, SettingOutlined, ProjectOutlined, SearchOutlined } from '@ant-design/icons';
+import { HomeOutlined, AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined, ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined, SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { useAuth } from '../auth/AuthContext';
 
 const { Sider, Header, Content } = Layout;
@@ -19,7 +19,8 @@ export function AppLayout() {
     ...(has('category:manage') ? [{ key: '/admin/categories', icon: <TagsOutlined />, label: '分类管理' }] : []),
     ...(has('workflow:manage') ? [{ key: '/admin/workflows', icon: <ApartmentOutlined />, label: '流程配置' }] : []),
     ...(has('audit:view') ? [{ key: '/admin/audit', icon: <AuditOutlined />, label: '审计日志' }] : []),
-    ...(has('setting:manage') ? [{ key: '/admin/settings', icon: <SettingOutlined />, label: '邮件设置' }] : [])
+    ...(has('setting:manage') ? [{ key: '/admin/settings', icon: <SettingOutlined />, label: '邮件设置' }] : []),
+    ...(has('database:manage') ? [{ key: '/admin/database', icon: <DatabaseOutlined />, label: '数据库管理' }] : [])
   ];
 
   const items = [
@@ -34,7 +35,7 @@ export function AppLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider theme="dark" width={220}>
-        <div style={{ color: '#fff', fontSize: 18, fontWeight: 600, padding: 16, textAlign: 'center' }}>文档审批系统</div>
+        <div style={{ color: '#fff', fontSize: 18, fontWeight: 600, padding: 16, textAlign: 'center' }}>WorkFlow System For SPO</div>
         <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={items} onClick={(e) => navigate(e.key)} />
       </Sider>
       <Layout>
