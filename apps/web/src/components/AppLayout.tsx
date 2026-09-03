@@ -85,7 +85,7 @@ export function AppLayout() {
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider theme="dark" width={220}>
-        <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, padding: 16, textAlign: "center" }}>WorkFlow System For SPO</div>
+        <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, padding: 16, textAlign: "center" }}>SPO 办公系统</div>
         <Menu
           theme="dark"
           mode="inline"

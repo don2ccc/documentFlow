@@ -39,7 +39,7 @@ export class PasswordResetService {
     );
     const text = `您正在重置「${user.username}」的登录密码，验证码：${code}（${CODE_TTL_MIN} 分钟内有效）。如果不是您本人操作，请忽略本邮件。`;
     const html = `<p>${text}</p>`;
-    const sent = await this.mailer.send(email, '【WorkFlow System For SPO】密码重置验证码', text, html);
+    const sent = await this.mailer.send(email, '【SPO 办公系统】密码重置验证码', text, html);
     this.logger.log(`forgot-password code sent to=${email} ok=${sent}`);
     return { ok: true };
   }

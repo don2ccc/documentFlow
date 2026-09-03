@@ -162,11 +162,11 @@ export class UsersService {
     const saved = await this.repo.save(user);
     await this.audit.log(operatorId, 'user:approve', 'user', id, { username: saved.username });
 
-    const subject = '【WorkFlow System For SPO】账号已开通';
+    const subject = '【SPO 办公系统】账号已开通';
     const text = [
       `您好 ${saved.name}：`,
       '',
-      '您申请注册的「WorkFlow System For SPO」账号已通过审批，请使用以下信息登录：',
+      '您申请注册的「SPO 办公系统」账号已通过审批，请使用以下信息登录：',
       `  用户名：${saved.username}`,
       `  初始密码：${initialPassword}`,
       `  登录地址：https://140.249.189.35:8443/login`,
