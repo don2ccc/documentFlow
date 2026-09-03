@@ -63,25 +63,29 @@ export class WorkflowsService {
   async saveNodes(id: string, dto: SaveWorkflowDto) {
     const wf = await this.workflowRepo.findOneBy({ id });
     if (!wf) throw new NotFoundException('流程不存在');
-    this.validateGraph(dto.nodes, dto.edges);
+    // Auto-generate linear edges from node order; ignore any provided edges
+    const edges = dto.nodes.length > 1
+      ? dto.nodes.slice(0, -1).map((n, i) => ({ id: `e_${id.slice(0, 8)}_${i}`, fromNodeId: n.id, toNodeId: dto.nodes[i + 1].id }))
+      : [];
+    this.validateGraph(dto.nodes, edges);
     await this.nodeRepo.delete({ workflowId: id });
     await this.edgeRepo.delete({ workflowId: id });
     const nodes = dto.nodes.map((n, i) =>
       this.nodeRepo.create({
         id: n.id, workflowId: id, name: n.name, type: n.type,
-        approverRule: n.approverRule ?? null, approverValue: n.approverValue ?? null,
-        approvalMethod: n.approvalMethod ?? null, timeoutHours: n.timeoutHours ?? null,
+        approverRule: n.approverRule ?? 'person', approverValue: n.approverValue ?? null,
+        approvalMethod: n.approvalMethod ?? 'orsign', timeoutDays: n.timeoutDays ?? 15,
         timeoutAction: n.timeoutAction ?? null, config: n.config ?? null, sortOrder: i
       })
     );
-    const edges = dto.edges.map((e) =>
+    const edgeEntities = edges.map((e) =>
       this.edgeRepo.create({
         id: e.id, workflowId: id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId,
-        conditionExpr: e.conditionExpr ?? null
+        conditionExpr: null
       })
     );
     await this.nodeRepo.save(nodes);
-    await this.edgeRepo.save(edges);
+    await this.edgeRepo.save(edgeEntities);
     await this.audit.log('system', 'workflow:save-nodes', 'workflow', id, { version: wf.version + 1 });
     wf.version += 1;
     wf.updatedAt = new Date();
@@ -93,6 +97,10 @@ export class WorkflowsService {
     const wf = await this.workflowRepo.findOneBy({ id });
     if (!wf) throw new NotFoundException('流程不存在');
     if (status === WorkflowStatus.Active) {
+      const existing = await this.nodeRepo.find({ where: { workflowId: id } });
+      const starts = existing.filter((n) => n.type === NodeType.Start).length;
+      const ends = existing.filter((n) => n.type === NodeType.End).length;
+      if (starts !== 1 || ends !== 1) throw new BadRequestException('启用前必须包含且仅包含一个开始与一个结束节点');
       const nodes = await this.nodeRepo.find({ where: { workflowId: id } });
       const edges = await this.edgeRepo.find({ where: { workflowId: id } });
       this.validateGraph(
@@ -119,14 +127,13 @@ export class WorkflowsService {
     if (edges.some((e) => e.toNodeId === start.id)) throw new BadRequestException('开始节点不能有入边');
     if (edges.some((e) => e.fromNodeId === ends[0].id)) throw new BadRequestException('结束节点不能有出边');
     for (const n of nodes) {
-      if ((n.type === NodeType.Approval || n.type === NodeType.Handle) && (!n.approverRule || !n.approvalMethod)) {
-        throw new BadRequestException(`节点「${n.name}」缺少审批人规则或审批方式`);
+      if (n.type === NodeType.Approval || n.type === NodeType.Handle) {
+        if (!n.approverValue) throw new BadRequestException(`节点「${n.name}」缺少审批人`);
       }
-      if (n.type === NodeType.Condition) {
+      if (n.type !== NodeType.End) {
         const outgoing = edges.filter((e) => e.fromNodeId === n.id);
-        if (outgoing.length === 0 || !outgoing.some((e) => !e.conditionExpr)) {
-          throw new BadRequestException(`条件分支节点「${n.name}」必须有默认（无条件）分支`);
-        }
+        if (outgoing.length === 0) throw new BadRequestException(`节点「${n.name}」缺少出口连线`);
+        if (outgoing.length > 1) throw new BadRequestException(`节点「${n.name}」只能有一条出口连线（按顺序审批）`);
       }
     }
     const reachable = new Set<string>([start.id]);

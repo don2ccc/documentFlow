@@ -6,9 +6,11 @@ import {
   TaskStatus, WorkflowStatus, WorkflowSnapshot
 } from '@document-flow/shared';
 import { Notification } from '../notifications/entities/notification.entity';
+import { MailerService } from '../notifications/mailer.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { AuditService } from '../audit/audit.service';
 import { Document } from '../documents/entities/document.entity';
+import { Application } from '../applications/entities/application.entity';
 import { ApprovalInstance } from './entities/approval-instance.entity';
 import { ApprovalRecord } from './entities/approval-record.entity';
 import { ApprovalTask } from './entities/approval-task.entity';
@@ -23,12 +25,14 @@ export class ApprovalEngineService {
     @InjectRepository(ApprovalRecord) private readonly recordRepo: Repository<ApprovalRecord>,
     @InjectRepository(Notification) private readonly notificationRepo: Repository<Notification>,
     @InjectRepository(Document) private readonly documentsRepo: Repository<Document>,
+    @InjectRepository(Application) private readonly applicationsRepo: Repository<Application>,
     private readonly workflows: WorkflowsService,
     private readonly dataSource: DataSource,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly mailer: MailerService
   ) {}
 
-  async submit(workflowId: string, documentId: string, initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
+  async submit(workflowId: string, targetId: string, targetType: 'document' | 'application', initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
     const wf = await this.workflows.getById(workflowId);
     if (wf.status !== WorkflowStatus.Active) throw new BadRequestException('流程未启用');
     const nodes = wf.nodes.map((n) => {
@@ -36,7 +40,7 @@ export class ApprovalEngineService {
       return {
         id: n.id, name: n.name, type: n.type,
         approverRule: n.approverRule ?? undefined, approverValue: n.approverValue ?? undefined,
-        approvalMethod: n.approvalMethod ?? undefined, timeoutHours: n.timeoutHours ?? undefined,
+        approvalMethod: n.approvalMethod ?? undefined, timeoutDays: n.timeoutDays ?? 15,
         timeoutAction: n.timeoutAction ?? undefined,
         config: chosen ? { ...(n.config ?? {}), chosenUserId: chosen } : n.config ?? undefined
       };
@@ -46,7 +50,7 @@ export class ApprovalEngineService {
       this.instanceRepo.create({
         workflowId, workflowVersion: wf.version,
         snapshot: { nodes, edges, version: wf.version } as WorkflowSnapshot,
-        documentId, initiatorId, status: InstanceStatus.Running
+        documentId: targetId, targetType, initiatorId, status: InstanceStatus.Running
       })
     );
     await this.enterNode(instance, nodes.find((n) => n.type === NodeType.Start)!.id);
@@ -61,11 +65,16 @@ export class ApprovalEngineService {
       instance.status = InstanceStatus.Approved;
       instance.finishedAt = new Date();
       await this.instanceRepo.save(instance);
-      await this.documentsRepo.update(
-        { id: instance.documentId },
-        { status: DocumentStatus.Archived, currentInstanceId: instance.id }
-      );
-      await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
+      if (instance.targetType === 'application') {
+        await this.applicationsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Archived, currentInstanceId: instance.id });
+        await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的申请项目审批已全部通过，已自动归档。', instance.documentId);
+      } else {
+        await this.documentsRepo.update(
+          { id: instance.documentId },
+          { status: DocumentStatus.Archived, currentInstanceId: instance.id }
+        );
+        await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
+      }
       return;
     }
     if (node.type === NodeType.Start) {
@@ -82,7 +91,7 @@ export class ApprovalEngineService {
       return;
     }
     const targets = await this.resolveTargets(instance, node);
-    const dueAt = node.timeoutHours ? new Date(Date.now() + node.timeoutHours * 3600_000) : null;
+    const dueAt = node.timeoutDays ? new Date(Date.now() + node.timeoutDays * 86_400_000) : null;
     for (const t of targets) {
       await this.taskRepo.save(
         this.taskRepo.create({
@@ -128,8 +137,17 @@ export class ApprovalEngineService {
       instance.status = InstanceStatus.Rejected;
       instance.finishedAt = new Date();
       await this.instanceRepo.save(instance);
+      if (instance.targetType === 'application') {
+        await this.applicationsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Rejected });
+      } else {
+        if (instance.targetType === 'application') {
+      await this.applicationsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Rejected });
+    } else {
       await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Rejected });
-      await this.notify([instance.initiatorId], 'approval_result', '审批已驳回', `节点「${node.name}」驳回了您的文档。`, instance.documentId);
+    }
+      }
+      const rejectTpl = instance.targetType === 'application' ? `节点「${node.name}」驳回了您的申请项目。` : `节点「${node.name}」驳回了您的文档。`;
+      await this.notify([instance.initiatorId], 'approval_result', '审批已驳回', rejectTpl, instance.documentId);
       return;
     }
     task.status = TaskStatus.Approved;
@@ -137,6 +155,31 @@ export class ApprovalEngineService {
     const siblings = await this.taskRepo.findBy({ instanceId: instance.id, nodeId: task.nodeId, status: TaskStatus.Pending });
     if (node.approvalMethod === ApprovalMethod.Countersign && siblings.length > 0) return;
     await this.enterNode(instance, await this.evaluateNext(instance, task.nodeId));
+  }
+
+  async getTaskForDocument(user: AuthUser, documentId: string) {
+    const instance = await this.instanceRepo.findOneBy({
+      documentId,
+      status: InstanceStatus.Running
+    });
+    if (!instance) {
+      return { taskId: null, canApprove: false, canTransfer: false };
+    }
+    const tasks = await this.taskRepo.findBy({
+      instanceId: instance.id,
+      status: TaskStatus.Pending
+    });
+    for (const task of tasks) {
+      const canAct = task.assigneeType === AssigneeType.Person
+        ? task.assigneeId === user.id && (!task.claimedBy || task.claimedBy === user.id)
+        : task.assigneeRoleId
+          ? Boolean(user.roleIds?.includes(task.assigneeRoleId)) && (!task.claimedBy || task.claimedBy === user.id)
+          : false;
+      if (canAct) {
+        return { taskId: task.id, canApprove: true, canTransfer: true };
+      }
+    }
+    return { taskId: null, canApprove: false, canTransfer: false };
   }
 
   async getTaskDetail(user: AuthUser, taskId: string) {
@@ -153,7 +196,20 @@ export class ApprovalEngineService {
           ? task.claimedBy === user.id || (await this.isInRole(user.id, task.assigneeRoleId))
           : false);
     if (!isAdmin && !canAct && instance.initiatorId !== user.id) throw new ForbiddenException('无权查看该任务');
-    const doc = await this.documentsRepo.findOneBy({ id: instance.documentId });
+    const doc = instance.targetType === 'application' ? await this.applicationsRepo.findOneBy({ id: instance.documentId }) : await this.documentsRepo.findOneBy({ id: instance.documentId });
+    const ownerRows = doc
+      ? await this.dataSource.query('SELECT name FROM users WHERE id = $1', [doc.ownerId])
+      : [];
+    const fileRows = doc
+      ? await this.dataSource.query(
+          instance.targetType === 'application'
+            ? 'SELECT count(*)::int AS count FROM application_files WHERE "applicationId" = $1'
+            : 'SELECT count(*)::int AS count FROM document_versions WHERE "documentId" = $1',
+          [doc.id]
+        )
+      : [];
+    const ownerName = ownerRows[0]?.name ?? '-';
+    const fileCount = Number(fileRows[0]?.count ?? 0);
     const node = instance.snapshot.nodes.find((n) => n.id === task.nodeId);
     const progress = await this.getProgress(user, instance.id);
     return {
@@ -161,7 +217,17 @@ export class ApprovalEngineService {
       taskStatus: task.status,
       documentId: instance.documentId,
       document: doc
-        ? { id: doc.id, title: doc.title, description: doc.description, amount: doc.amount, status: doc.status }
+        ? {
+          id: doc.id,
+          title: doc.title,
+          description: doc.description,
+          amount: doc.amount,
+          status: doc.status,
+          ownerName,
+          fileCount,
+          createdAt: doc.createdAt.toISOString(),
+          updatedAt: doc.updatedAt.toISOString()
+        }
         : null,
       nodeName: node?.name ?? '审批',
       canApprove: canAct && task.status === 'pending' && instance.status === 'running',
@@ -176,7 +242,7 @@ export class ApprovalEngineService {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .innerJoin(ApprovalInstance, 'i', 'i.id = t.instanceId')
-      .innerJoin(Document, 'd', 'd.id = i."documentId"')
+      .innerJoin(Application, 'd', 'd.id = i."documentId"')
       .where('t.status = :pending', { pending: TaskStatus.Pending })
       .andWhere(
         new Brackets((b) => {
@@ -232,7 +298,7 @@ export class ApprovalEngineService {
     const instance = await this.instanceRepo.findOneBy({ id: task.instanceId });
     if (!instance || instance.status !== InstanceStatus.Running) throw new BadRequestException('流程已结束');
     const node = instance.snapshot.nodes.find((n) => n.id === task.nodeId)!;
-    const dueAt = node.timeoutHours ? new Date(Date.now() + node.timeoutHours * 3600_000) : null;
+    const dueAt = node.timeoutDays ? new Date(Date.now() + node.timeoutDays * 86_400_000) : null;
     task.status = TaskStatus.Transferred;
     await this.taskRepo.save(task);
     await this.taskRepo.save(
@@ -261,7 +327,11 @@ export class ApprovalEngineService {
     instance.finishedAt = new Date();
     await this.instanceRepo.save(instance);
     await this.taskRepo.update({ instanceId, status: TaskStatus.Pending }, { status: TaskStatus.Voided });
-    await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Draft });
+    if (instance.targetType === 'application') {
+      await this.applicationsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Draft });
+    } else {
+      await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Draft });
+    }
     await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Withdraw }));
     await this.audit.log(actorId, 'approval:withdraw', 'approval_instance', instanceId);
   }
@@ -293,21 +363,153 @@ export class ApprovalEngineService {
       records.some((r) => r.actorId === user.id) ||
       tasks.some((t) => t.assigneeId === user.id);
     if (!isParticipant) throw new ForbiddenException('无权查看该审批进度');
-    const nodes = instance.snapshot.nodes.map((n) => {
+    const currentIndex = instance.snapshot.nodes.findIndex((n) => n.id === instance.currentNodeId);
+    const resolvedTargets = await Promise.all(
+      instance.snapshot.nodes.map(async (node) => {
+        if (!node.approverRule) return [];
+        try {
+          return await this.resolveTargets(instance, node);
+        } catch {
+          return [];
+        }
+      })
+    );
+    const userIds = new Set<string>();
+    tasks.forEach((task) => {
+      if (task.assigneeId) userIds.add(task.assigneeId);
+    });
+    records.forEach((record) => userIds.add(record.actorId));
+    resolvedTargets.forEach((targets) => {
+      targets.forEach((target) => target.userIds.forEach((id) => userIds.add(id)));
+    });
+    const userNameMap = new Map<string, string>();
+    if (userIds.size > 0) {
+      const rows = await this.dataSource.query(
+        'SELECT id, name FROM users WHERE id = ANY($1::uuid[])',
+        [[...userIds]]
+      );
+      (rows as Array<{ id: string; name: string }>).forEach((row) => userNameMap.set(row.id, row.name));
+    }
+    const nodes = instance.snapshot.nodes.map((n, idx) => {
       const nodeTasks = tasks.filter((t) => t.nodeId === n.id);
       const nodeRecords = records.filter((r) => nodeTasks.some((t) => t.id === r.taskId));
       const status =
         n.id === instance.currentNodeId
           ? 'current'
-          : nodeTasks.length === 0 || nodeTasks.every((t) => t.status !== TaskStatus.Pending)
+          : currentIndex >= 0 && idx < currentIndex
             ? 'done'
-            : 'todo';
-      const approvers = nodeRecords.map((r) => ({
-        actorId: r.actorId, action: r.action, comment: r.comment, time: r.createdAt.toISOString()
-      }));
+            : nodeTasks.length > 0 && nodeTasks.every((t) => t.status !== TaskStatus.Pending)
+              ? 'done'
+              : 'todo';
+      const approvers = nodeTasks.map((task) => {
+        const record = nodeRecords.find((r) => r.taskId === task.id);
+        const actorId = record?.actorId ?? task.assigneeId;
+        return {
+          actorId,
+          name: actorId ? userNameMap.get(actorId) ?? "" : "",
+          action: record?.action ?? null,
+          comment: record?.comment ?? null,
+          time: record?.createdAt.toISOString() ?? null
+        };
+      });
+      const resolvedApprovers = (resolvedTargets[idx] ?? []).flatMap((target) =>
+        target.userIds.map((userId) => ({
+          actorId: userId,
+          name: userNameMap.get(userId) ?? "",
+          action: null,
+          comment: null,
+          time: null
+        }))
+      );
+      const approverIds = new Set(approvers.map((approver) => approver.actorId));
+      resolvedApprovers.forEach((approver) => {
+        if (!approverIds.has(approver.actorId)) {
+          approvers.push(approver);
+          approverIds.add(approver.actorId);
+        }
+      });
       return { nodeId: n.id, name: n.name, status, approvers };
     });
-    return { instanceId, status: instance.status, nodes };
+    const currentReviewer = instance.currentNodeId
+      ? await this.resolveCurrentReviewer(instance.currentNodeId, tasks)
+      : [];
+    return { instanceId, status: instance.status, nodes, currentReviewer };
+  }
+
+  async resolveCurrentReviewer(currentNodeId: string, tasks: ApprovalTask[]) {
+    const pending = tasks.filter((t) => t.nodeId === currentNodeId && t.status === TaskStatus.Pending);
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const t of pending) {
+      if (t.assigneeId && !seen.has(t.assigneeId)) { seen.add(t.assigneeId); ids.push(t.assigneeId); }
+    }
+    if (ids.length === 0) return [];
+    const rows = await this.dataSource.query(
+      'SELECT id, name FROM users WHERE id = ANY($1::uuid[])',
+      [ids]
+    );
+    return (rows as Array<{ id: string; name: string }>).map((u) => ({ userId: u.id, name: u.name }));
+  }
+
+  async getCurrentReviewersForInstances(instanceIds: string[]) {
+    const result = new Map<string, Array<{ userId: string; name: string }>>();
+    if (instanceIds.length === 0) return result;
+    const [instances, allTasks] = await Promise.all([
+      this.instanceRepo.find({ where: { id: In(instanceIds) } }),
+      this.taskRepo.find({ where: { instanceId: In(instanceIds), status: TaskStatus.Pending } })
+    ]);
+    const assigneeIds = new Set<string>();
+    for (const inst of instances) {
+      if (!inst.currentNodeId) { result.set(inst.id, []); continue; }
+      const ids = allTasks
+        .filter((t) => t.instanceId === inst.id && t.nodeId === inst.currentNodeId)
+        .map((t) => t.assigneeId)
+        .filter((id): id is string => !!id);
+      const unique = Array.from(new Set(ids));
+      if (unique.length === 0) { result.set(inst.id, []); continue; }
+      result.set(inst.id, unique.map((id) => ({ userId: id, name: '' })));
+      unique.forEach((id) => assigneeIds.add(id));
+    }
+    if (assigneeIds.size === 0) return result;
+    const rows = await this.dataSource.query(
+      'SELECT id, name FROM users WHERE id = ANY($1::uuid[])',
+      [[...assigneeIds]]
+    );
+    const nameMap = new Map((rows as Array<{ id: string; name: string }>).map((u) => [u.id, u.name]));
+    for (const [instId, placeholders] of result.entries()) {
+      for (const p of placeholders) {
+        p.name = nameMap.get(p.userId) ?? '';
+      }
+    }
+    return result;
+  }
+
+  async returnToInitiator(taskId: string, instanceId: string, node: { name: string }) {
+    const instance = await this.instanceRepo.findOneBy({ id: instanceId });
+    if (!instance || instance.status !== InstanceStatus.Running) return;
+    await this.taskRepo.update({ instanceId, status: TaskStatus.Pending }, { status: TaskStatus.Voided });
+    await this.recordRepo.save(
+      this.recordRepo.create({
+        instanceId, taskId, actorId: 'system', action: RecordAction.Reject,
+        comment: `超时未审批，已退回给发起人`
+      })
+    );
+    instance.status = InstanceStatus.Rejected;
+    instance.finishedAt = new Date();
+    await this.instanceRepo.save(instance);
+    if (instance.targetType === 'application') {
+      await this.applicationsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Rejected });
+    } else {
+      await this.documentsRepo.update({ id: instance.documentId }, { status: DocumentStatus.Rejected });
+    }
+    await this.notify(
+      [instance.initiatorId],
+      'approval_result',
+      '审批已超时退回',
+      `节点「${node.name}」超时未处理，文档已退回给您。`,
+      instance.documentId
+    );
+    await this.audit.log('system', 'approval:timeout-return', 'approval_instance', instanceId, { nodeName: node.name });
   }
 
   private async resolveTargets(instance: ApprovalInstance, node: { approverRule?: string; approverValue?: string; config?: Record<string, unknown> }): Promise<ResolvedTarget[]> {
@@ -353,11 +555,8 @@ export class ApprovalEngineService {
   }
 
   private async evaluateNext(instance: ApprovalInstance, nodeId: string): Promise<string> {
-    const doc = await this.documentsRepo.findOneBy({ id: instance.documentId });
-    if (!doc) throw new NotFoundException('文档不存在');
     const outgoing = instance.snapshot.edges.filter((e) => e.fromNodeId === nodeId);
-    const matched = outgoing.find((e) => e.conditionExpr && this.matchCondition(e.conditionExpr, doc));
-    const next = matched ?? outgoing.find((e) => !e.conditionExpr);
+    const next = outgoing[0];
     if (!next) throw new BadRequestException('流程缺少出口连线');
     return next.toNodeId;
   }
@@ -388,10 +587,24 @@ export class ApprovalEngineService {
   }
 
   private async notify(userIds: string[], type: string, title: string, content: string, relatedId?: string) {
-    for (const userId of [...new Set(userIds)]) {
+    const ids = [...new Set(userIds)];
+    for (const userId of ids) {
       await this.notificationRepo.save(
         this.notificationRepo.create({ userId, type, title, content, relatedId: relatedId ?? null })
       );
+    }
+    // 同时发邮件给设置了 email 的用户（系统通知+邮件双通道）
+    if (ids.length > 0) {
+      const users = await this.dataSource.query(
+`SELECT id, email, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
+        [ids]
+      );
+      const addresses = users.map((u: any) => u.email).filter(Boolean);
+      if (addresses.length > 0) {
+        const link = relatedId ? `${process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443'}/documents/${relatedId}` : (process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443');
+        const html = `<p>${content}</p><p><a href="${link}">查看详情</a></p>`;
+        await this.mailer.send(addresses, `[文档审批] ${title}`, content, html);
+      }
     }
   }
 }

@@ -19,6 +19,6 @@ describe('AppLayout admin menu', () => {
       </MemoryRouter>
     );
     expect(screen.queryByText('用户管理')).not.toBeInTheDocument();
-    expect(screen.getByText('我的文档')).toBeInTheDocument();
+    expect(screen.getByText('我的申请')).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomUUID } from 'crypto';
@@ -28,6 +28,10 @@ export class DocumentsController {
   @RequirePermission('document:upload')
   upload(@UploadedFile() file: Express.Multer.File | undefined, @Body() dto: UploadDocumentDto, @CurrentUser() user: AuthUser) {
     if (!file) throw new BadRequestException('请上传文件');
+    // multer 2.x passes filename as raw bytes; busboy decodes them as latin-1 even when
+    // the client sent UTF-8 in multipart/form-data. Re-interpret those bytes as latin-1
+    // and re-encode as utf-8 to recover the original Chinese characters.
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
     return this.documents.upload(user.id, file, dto);
   }
 
@@ -52,9 +56,9 @@ export class DocumentsController {
   }
 
   @Get()
-  @RequirePermission('document:upload')
+  @RequirePermission('document:upload', 'application:query')
   findMy(@Query() query: any, @CurrentUser() user: AuthUser) {
-    return this.documents.findVisible(user.id, query);
+    return this.documents.findVisible(user, query);
   }
 
   @Post(':id/versions')
@@ -62,6 +66,7 @@ export class DocumentsController {
   @RequirePermission('document:upload')
   addVersion(@Param('id') id: string, @UploadedFile() file: Express.Multer.File | undefined, @Body() dto: CreateVersionDto, @CurrentUser() user: AuthUser) {
     if (!file) throw new BadRequestException('请上传文件');
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
     return this.documents.addVersion(user.id, id, file, dto);
   }
 
@@ -83,5 +88,10 @@ export class DocumentsController {
   @Get(':id/versions/:versionId/download')
   download(@Param('id') id: string, @Param('versionId') versionId: string, @CurrentUser() user: AuthUser, @Res() res: any) {
     return this.documents.streamDownload(user, id, versionId, res);
+  }
+  @Delete(':id')
+  @RequirePermission('user:manage')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documents.remove(user, id);
   }
 }

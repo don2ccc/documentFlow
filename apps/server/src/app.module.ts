@@ -10,10 +10,13 @@ import { RolesModule } from './modules/roles/roles.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ApplicationsModule } from './modules/applications/applications.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
+import { CoreSettingsModule } from './modules/core-settings/core-settings.module';
 
 @Module({
   imports: [
@@ -33,10 +36,13 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     DepartmentsModule,
     CategoriesModule,
     DocumentsModule,
+    ApplicationsModule,
     WorkflowsModule,
     ApprovalsModule,
     AuditModule,
-    DashboardModule
+    DashboardModule,
+    SystemSettingsModule,
+    CoreSettingsModule
   ],
   controllers: [HealthController],
   providers: [

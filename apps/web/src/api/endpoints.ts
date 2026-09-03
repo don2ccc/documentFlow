@@ -3,7 +3,9 @@ import { api } from './client';
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
 export interface DocumentListItem {
   id: string; title: string; description: string | null; categoryId: string | null; amount: string | null;
-  status: string; ownerId: string; createdAt: string;
+  status: string; ownerId: string; ownerName: string | null; createdAt: string;
+  currentInstanceId: string | null;
+  currentReviewer: Array<{ userId: string; name: string }> | null;
   latestVersion: { id: string; versionNo: number; fileName: string; size: number; mimeType: string } | null;
 }
 export interface DocumentVersion { id: string; versionNo: number; fileName: string; size: number; mimeType: string; reason: string | null; createdAt: string }
@@ -17,11 +19,23 @@ export interface CategoryItem { id: string; name: string; sortOrder: number }
 export interface LoginResult {
   accessToken: string;
   user: { id: string; username: string; name: string; departmentId: string | null; roles: string[] };
+  mustChangePassword: boolean;
 }
 
 export const authApi = {
   login: (username: string, password: string) =>
-    api.post<LoginResult>('/auth/login', { username, password }).then((r) => r.data)
+    api.post<LoginResult>('/auth/login', { username, password }).then((r) => r.data),
+  changePassword: (newPassword: string) =>
+    api.post<{ ok: boolean }>('/auth/change-password', { newPassword }).then((r) => r.data),
+  // 找回密码：发送验证码
+  forgotPasswordSend: (email: string) =>
+    api.post<{ ok: boolean }>('/auth/forgot-password', { email }).then((r) => r.data),
+  // 找回密码：验证码 + 新密码
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    api.post<{ ok: boolean }>('/auth/reset-password', { email, code, newPassword }).then((r) => r.data),
+  // 新用户注册（公开）
+  register: (data: { username: string; password: string; name: string; email: string; employeeNo?: string; directSupervisor?: string; productionLine?: string; position?: string }) =>
+    api.post<{ ok: boolean }>('/auth/register', data).then((r) => r.data)
 };
 
 export const documentsApi = {
@@ -33,14 +47,15 @@ export const documentsApi = {
     api.post(`/documents/${id}/submit`, { workflowId, chosenApproverIds }).then((r) => r.data),
   withdraw: (id: string) => api.post(`/documents/${id}/withdraw`).then((r) => r.data),
   remind: (id: string) => api.post(`/documents/${id}/remind`).then((r) => r.data),
-  addVersion: (id: string, formData: FormData) => api.post(`/documents/${id}/versions`, formData).then((r) => r.data)
+  addVersion: (id: string, formData: FormData) => api.post(`/documents/${id}/versions`, formData).then((r) => r.data),
+  remove: (id: string) => api.delete(`/documents/${id}`).then((r) => r.data)
 };
 
 export const workflowsApi = {
   list: (params: Record<string, unknown> = {}) => api.get<WorkflowItem[]>('/workflows', { params }).then((r) => r.data),
   get: (id: string) => api.get<WorkflowItem & { nodes: any[]; edges: any[] }>(`/workflows/${id}`).then((r) => r.data),
   create: (data: { name: string; description?: string }) => api.post('/workflows', data).then((r) => r.data),
-  saveNodes: (id: string, data: { nodes: any[]; edges: any[] }) => api.put(`/workflows/${id}/nodes`, data).then((r) => r.data),
+  saveNodes: (id: string, data: { nodes: any[]; edges?: any[] }) => api.put(`/workflows/${id}/nodes`, data).then((r) => r.data),
   activate: (id: string) => api.post(`/workflows/${id}/activate`).then((r) => r.data),
   deactivate: (id: string) => api.post(`/workflows/${id}/deactivate`).then((r) => r.data)
 };
@@ -55,13 +70,17 @@ export const categoriesApi = {
 export interface TodoItem { taskId: string; documentId: string; title: string; nodeName: string; priority: 'high' | 'normal' | 'low'; dueAt: string | null; submittedByName: string; documentStatus: string }
 export interface TaskDetail {
   taskId: string; taskStatus: string; documentId: string;
-  document: { id: string; title: string; description: string | null; amount: string | null; status: string } | null;
+  document: { id: string; title: string; description: string | null; amount: string | null; status: string; ownerName: string; fileCount: number; createdAt: string; updatedAt: string } | null;
   nodeName: string; canApprove: boolean; instanceStatus: string;
   progress: { instanceId: string; status: string; nodes: Array<{ nodeId: string; name: string; status: string; approvers: Array<{ actorId: string; action: string; comment: string | null; time: string }> }> }
 }
 
+export interface ApprovalTaskAccess { taskId: string | null; canApprove: boolean; canTransfer: boolean; };
+
 export const approvalsApi = {
   todos: (params: Record<string, unknown> = {}) => api.get<Paged<TodoItem>>('/approvals/todos', { params }).then((r) => r.data),
+  taskForDocument: (documentId: string) =>
+    api.get<ApprovalTaskAccess>(`/approvals/tasks/by-document/${documentId}`).then((r) => r.data),
   taskDetail: (taskId: string) => api.get<TaskDetail>(`/approvals/tasks/${taskId}`).then((r) => r.data),
   approve: (taskId: string, comment?: string) => api.post(`/approvals/tasks/${taskId}/approve`, { comment }).then((r) => r.data),
   reject: (taskId: string, comment: string) => api.post(`/approvals/tasks/${taskId}/reject`, { comment }).then((r) => r.data),
@@ -73,7 +92,7 @@ export interface RoleItem { id: string; name: string; code: string; description:
 export interface PermissionItem { id: string; name: string; code: string }
 export interface DepartmentNode { id: string; name: string; managerId: string | null; children: DepartmentNode[] }
 export interface AuditLogItem { id: string; actorId: string; action: string; targetType: string; targetId: string | null; detail: Record<string, unknown> | null; ip: string | null; createdAt: string }
-export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[] }
+export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[]; roleIds?: string[]; email?: string | null; directSupervisor?: string | null; productionLine?: string | null; position?: string | null; employeeNo?: string | null; status?: string }
 
 export const rolesApi = {
   list: () => api.get<RoleItem[]>('/roles').then((r) => r.data),
@@ -92,7 +111,17 @@ export const usersApi = {
   list: (params: Record<string, unknown> = {}) => api.get<Paged<UserItem>>('/users', { params }).then((r) => r.data),
   create: (data: Record<string, unknown>) => api.post('/users', data).then((r) => r.data),
   updateStatus: (id: string, status: string) => api.patch(`/users/${id}/status`, { status }).then((r) => r.data),
-  resetPassword: (id: string, newPassword: string) => api.post(`/users/${id}/reset-password`, { newPassword }).then((r) => r.data)
+  resetPassword: (id: string, newPassword: string) => api.post<{ ok: boolean }>(`/users/${id}/reset-password`, { newPassword }).then((r) => r.data),
+  remove: (id: string) => api.delete(`/users/${id}`).then((r) => r.data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/users/${id}`, data).then((r) => r.data),
+  // 管理员审批待激活账号（激活 + 生成密码 + 发送邮件）
+  approve: (id: string) => api.post<{ user: UserItem; initialPassword: string; emailSent: boolean }>(`/users/${id}/approve`).then((r) => r.data),
+  // 当前登录用户自助接口
+  getMe: () => api.get<UserItem>('/users/me').then((r) => r.data),
+  updateMe: (data: { employeeNo?: string | null; email?: string | null; directSupervisor?: string | null; productionLine?: string | null; position?: string | null; departmentId?: string | null }) =>
+    api.put<UserItem>('/users/me', data).then((r) => r.data),
+  changeMyPassword: (newPassword: string) =>
+    api.post<{ ok: boolean }>('/users/me/change-password', { newPassword }).then((r) => r.data)
 };
 
 export const auditApi = {
@@ -102,6 +131,74 @@ export const auditApi = {
 export const dashboardApi = {
   summary: () =>
     api
-      .get<{ todoCount: number; myPending: number; myApproved: number; myRejected: number; recentInstances: Array<{ id: string; title: string; status: string; createdAt: string }> }>('/dashboard/summary')
-      .then((r) => r.data)
+    .get<{ todoCount: number; myPending: number; myApproved: number; myRejected: number; recentInstances: Array<{ id: string; title: string; status: string; createdAt: string }> }>('/dashboard/summary')
+    .then((r) => r.data)
+};
+export interface SystemSettingItem {
+  key: string;
+  value: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export const settingsApi = {
+  list: () => api.get<SystemSettingItem[]>('/system-settings').then((r) => r.data),
+  set: (key: string, value: string) => api.put<SystemSettingItem>(`/system-settings/${encodeURIComponent(key)}`, { value }).then((r) => r.data),
+  remove: (key: string) => api.delete<{ ok: boolean }>(`/system-settings/${encodeURIComponent(key)}`).then((r) => r.data),
+  testEmail: (to: string) => api.post<{ ok: boolean; message: string }>('/system-settings/test-email', { to }).then((r) => r.data)
+};
+
+export interface ApplicationFileInfo {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  versionNo: number;
+  uploadedBy: string;
+  createdAt: string;
+}
+export interface ApplicationListItem {
+  id: string;
+  title: string;
+  status: string;
+  ownerId: string;
+  ownerName: string | null;
+  fileCount: number;
+  totalSize: number;
+  currentInstanceId: string | null;
+  defaultWorkflowId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  currentReviewer: Array<{ userId: string; name: string }> | null;
+}
+export interface ApplicationQueryItem extends ApplicationListItem {
+  categoryId: string | null;
+  categoryName: string | null;
+  currentNodeName: string | null;
+}
+export interface ApplicationDetail extends ApplicationListItem {
+  description: string | null;
+  categoryId: string | null;
+  amount: string | null;
+  files: ApplicationFileInfo[];
+  progress: { instanceId: string; status: string; nodes: Array<{ nodeId: string; name: string; status: string; approvers: Array<{ actorId: string; action: string; comment: string | null; time: string }> }> } | null;
+}
+
+export const applicationsApi = {
+  query: (params: Record<string, unknown>) =>
+    api.get<Paged<ApplicationQueryItem>>('/applications/query', { params }).then((r) => r.data),
+  list: (params: Record<string, unknown>) =>
+    api.get<Paged<ApplicationListItem>>('/applications', { params }).then((r) => r.data),
+  get: (id: string) =>
+    api.get<ApplicationDetail>(`/applications/${id}`).then((r) => r.data),
+  create: (formData: FormData) =>
+    api.post<ApplicationListItem>('/applications', formData).then((r) => r.data),
+  submit: (id: string, workflowId: string) =>
+    api.post(`/applications/${id}/submit`, { workflowId }).then((r) => r.data),
+  withdraw: (id: string) =>
+    api.post(`/applications/${id}/withdraw`).then((r) => r.data),
+  remind: (id: string) =>
+    api.post(`/applications/${id}/remind`).then((r) => r.data),
+  remove: (id: string) =>
+    api.delete(`/applications/${id}`).then((r) => r.data)
 };

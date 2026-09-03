@@ -22,6 +22,10 @@ export interface DocumentDto {
   amount: string | null;
   status: DocumentStatus;
   ownerId: string;
+  ownerName: string | null;
+  currentInstanceId: string | null;
+  defaultWorkflowId: string | null;
+  currentReviewer: Array<{ userId: string; name: string }> | null;
   createdAt: string;
   latestVersion: { id: string; versionNo: number; fileName: string; size: number; mimeType: string } | null;
 }
@@ -48,7 +52,8 @@ export class DocumentsService {
         categoryId: dto.categoryId || null,
         amount: dto.amount ?? null,
         ownerId: userId,
-        status: DocumentStatus.Draft
+        status: DocumentStatus.Draft,
+        defaultWorkflowId: dto.workflowId ?? null
       })
     );
     const version = await this.versionRepo.save(
@@ -65,10 +70,18 @@ export class DocumentsService {
     );
     await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
     await this.audit.log(userId, 'document:upload', 'document', doc.id, { title: doc.title });
-    return this.toDto(doc, version);
+    if (dto.workflowId) {
+      const instance = await this.engine.submit(dto.workflowId, doc.id, 'document', userId, {});
+      doc.status = DocumentStatus.InApproval;
+      doc.currentInstanceId = instance.id;
+      await this.docRepo.save(doc);
+      await this.audit.log(userId, 'document:submit', 'document', doc.id, { workflowId: dto.workflowId, autoOnUpload: true });
+    }
+    const ownerNames0 = await this.loadOwnerNames([doc.ownerId]);
+    return this.toDto(doc, version, ownerNames0.get(doc.ownerId) ?? null);
   }
 
-  async findVisible(userId: string, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
+  async findVisible(user: AuthUser, query: { status?: string; categoryId?: string; keyword?: string; page?: number; pageSize?: number }) {
     const page = query.page ?? 1;
     const pageSize = Math.min(query.pageSize ?? 20, 100);
     const applyFilters = (qb: SelectQueryBuilder<Document>) => {
@@ -79,20 +92,28 @@ export class DocumentsService {
     };
     const finish = async (qb: SelectQueryBuilder<Document>) => {
       const [items, total] = await qb.orderBy('d.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
-      const dtos = await Promise.all(items.map((d) => this.toDto(d)));
+      const names = await this.loadOwnerNames(items.map((d) => d.ownerId));
+      const reviewerMap = await this.loadCurrentReviewers(items);
+      const dtos = await Promise.all(
+        items.map((d) => this.toDto(d, undefined, names.get(d.ownerId) ?? null, reviewerMap.get(d.currentInstanceId ?? '') ?? null))
+      );
       return { items: dtos, total, page, pageSize };
     };
+    const canSeeAll = user.permissions.includes('user:manage') || user.permissions.includes('application:query');
+    if (canSeeAll) {
+      return await finish(applyFilters(this.docRepo.createQueryBuilder('d')));
+    }
     try {
       const qb = applyFilters(
         this.docRepo.createQueryBuilder('d').where(
           '(d.ownerId = :userId OR EXISTS (SELECT 1 FROM approval_instances ai WHERE ai."documentId" = d.id AND (ai."initiatorId" = :userId OR ai.id IN (SELECT ar."instanceId" FROM approval_records ar WHERE ar."actorId" = :userId))))',
-          { userId }
+          { userId: user.id }
         )
       );
       return await finish(qb);
     } catch (e) {
       if (String((e as Error).message).includes('does not exist')) {
-        return await finish(applyFilters(this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId })));
+        return await finish(applyFilters(this.docRepo.createQueryBuilder('d').where('d.ownerId = :userId', { userId: user.id })));
       }
       throw e;
     }
@@ -102,12 +123,15 @@ export class DocumentsService {
     const doc = await this.getDocument(id);
     if (doc.ownerId !== user.id) throw new ForbiddenException('只能提交自己的文档');
     if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(doc.status)) throw new BadRequestException('当前状态不可提交');
-    const instance = await this.engine.submit(workflowId, id, user.id, { chosenApproverIds });
+    const wfId = workflowId ?? doc.defaultWorkflowId;
+    if (!wfId) throw new BadRequestException('请选择审批流程');
+    const instance = await this.engine.submit(wfId, id, 'document', user.id, { chosenApproverIds });
     doc.status = DocumentStatus.InApproval;
     doc.currentInstanceId = instance.id;
     await this.docRepo.save(doc);
     await this.audit.log(user.id, 'document:submit', 'document', id, { workflowId });
-    return this.toDto(doc);
+    const ownerNamesX = await this.loadOwnerNames([doc.ownerId]);
+    return this.toDto(doc, undefined, ownerNamesX.get(doc.ownerId) ?? null);
   }
 
   async withdraw(user: AuthUser, id: string) {
@@ -119,7 +143,8 @@ export class DocumentsService {
     doc.currentInstanceId = null;
     await this.docRepo.save(doc);
     await this.audit.log(user.id, 'document:withdraw', 'document', id);
-    return this.toDto(doc);
+    const ownerNamesX = await this.loadOwnerNames([doc.ownerId]);
+    return this.toDto(doc, undefined, ownerNamesX.get(doc.ownerId) ?? null);
   }
 
   async remind(user: AuthUser, id: string) {
@@ -132,25 +157,34 @@ export class DocumentsService {
 
   async getDetail(user: AuthUser, id: string) {
     const doc = await this.assertCanView(user, id);
-    const versions = await this.versionRepo.find({ where: { documentId: id }, order: { versionNo: 'DESC' } });
+    let versions = await this.versionRepo.find({ where: { documentId: id }, order: { versionNo: 'DESC' } });
+    if ((doc as any)._fromApplication) {
+      const files = await this.dataSource.query(
+        'SELECT id, "fileName", "mimeType", size, "versionNo", "createdAt" FROM application_files WHERE "applicationId" = $1 ORDER BY "createdAt" DESC',
+        [id]
+      );
+      versions = files.map((f: any) => ({
+        id: f.id, documentId: id, fileName: f.fileName, filePath: '',
+        mimeType: f.mimeType, size: f.size, versionNo: f.versionNo,
+        checksum: '', uploadedBy: '', createdAt: f.createdAt
+      })) as any;
+    }
     let progress = null;
     if (doc.currentInstanceId) {
-      try {
-        progress = await this.engine.getProgress(user, doc.currentInstanceId);
-      } catch {
-        progress = null;
-      }
+      try { progress = await this.engine.getProgress(user, doc.currentInstanceId); }
+      catch { progress = null; }
     }
-    return { ...(await this.toDto(doc)), versions, progress, currentInstanceId: doc.currentInstanceId };
+    const ownerNames = await this.loadOwnerNames([doc.ownerId]);
+    return { ...(await this.toDto(doc, versions[0], ownerNames.get(doc.ownerId) ?? null)), versions, progress, currentInstanceId: doc.currentInstanceId };
   }
 
   async assertCanView(user: AuthUser, documentId: string): Promise<Document> {
     const doc = await this.getDocument(documentId);
-    if (user.permissions.includes('user:manage')) return doc;
+    if (user.permissions.includes('user:manage') || user.permissions.includes('application:query')) return doc;
     if (doc.ownerId === user.id) return doc;
     try {
       const involved = await this.dataSource.query(
-        'SELECT COUNT(*)::int AS c FROM approval_instances ai WHERE ai."documentId" = $1 AND (ai."initiatorId" = $2 OR EXISTS (SELECT 1 FROM approval_records ar WHERE ar."instanceId" = ai.id AND ar."actorId" = $2))',
+        'SELECT COUNT(*)::int AS c FROM approval_instances ai WHERE ai."documentId" = $1 AND ( ai."initiatorId" = $2 OR EXISTS (SELECT 1 FROM approval_tasks at WHERE at."instanceId" = ai.id AND (at."assigneeId" = $2 OR at."claimedBy" = $2)) OR EXISTS (SELECT 1 FROM approval_records ar WHERE ar."instanceId" = ai.id AND ar."actorId" = $2))',
         [documentId, user.id]
       );
       if (Number(involved[0]?.c ?? 0) > 0) return doc;
@@ -162,8 +196,20 @@ export class DocumentsService {
 
   async getDocument(id: string): Promise<Document> {
     const doc = await this.docRepo.findOneBy({ id });
-    if (!doc) throw new NotFoundException('文档不存在');
-    return doc;
+    if (doc) return doc;
+    const appRows = await this.dataSource.query(
+      'SELECT id, title, description, "categoryId", amount, "ownerId", status, "currentInstanceId", "defaultWorkflowId", "createdAt", "updatedAt" FROM applications WHERE id = $1',
+      [id]
+    );
+    if (!appRows[0]) throw new NotFoundException('文档不存在');
+    const row = appRows[0];
+    return {
+      id: row.id, title: row.title, description: row.description,
+      categoryId: row.categoryId, amount: row.amount, ownerId: row.ownerId,
+      status: row.status, currentInstanceId: row.currentInstanceId,
+      defaultWorkflowId: row.defaultWorkflowId, createdAt: row.createdAt,
+      updatedAt: row.updatedAt, _fromApplication: true
+    } as unknown as Document;
   }
 
   async addVersion(userId: string, documentId: string, file: Express.Multer.File, dto: CreateVersionDto) {
@@ -195,7 +241,8 @@ export class DocumentsService {
     await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
     doc.updatedAt = new Date();
     await this.docRepo.save(doc);
-    return this.toDto(doc, version);
+    const ownerNames0 = await this.loadOwnerNames([doc.ownerId]);
+    return this.toDto(doc, version, ownerNames0.get(doc.ownerId) ?? null);
   }
 
   async listVersions(user: AuthUser, documentId: string) {
@@ -213,8 +260,24 @@ export class DocumentsService {
 
   async streamPreview(user: AuthUser, documentId: string, versionId: string, res: any) {
     await this.assertCanView(user, documentId);
-    const version = await this.versionRepo.findOneBy({ id: versionId, documentId });
-    if (!version) throw new NotFoundException('版本不存在');
+    let version = await this.versionRepo.findOneBy({ id: versionId, documentId });
+    if (!version) {
+      const fileRows = await this.dataSource.query(
+        'SELECT id, "fileName", "mimeType", "filePath" FROM application_files WHERE id = $1 AND "applicationId" = $2',
+        [versionId, documentId]
+      );
+      if (fileRows[0]) {
+        const f = fileRows[0];
+        const previewPath = path.resolve(f.filePath);
+        if (fs.existsSync(previewPath)) {
+          res.type(f.mimeType || 'application/pdf');
+          res.sendFile(previewPath);
+          return;
+        }
+        throw new NotFoundException('文件不存在');
+      }
+      throw new NotFoundException('版本不存在');
+    }
     const job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
     if (!job || job.status === 'pending') { res.status(202).json({ converting: true }); return; }
     if (job.status === 'failed' || !job.previewPath || !fs.existsSync(job.previewPath)) {
@@ -255,8 +318,31 @@ export class DocumentsService {
     }
   }
 
-  private async toDto(doc: Document, latest?: DocumentVersion): Promise<DocumentDto> {
+
+  private async loadOwnerNames(ownerIds: string[]): Promise<Map<string, string>> {
+    const ids = Array.from(new Set(ownerIds.filter(Boolean)));
+    if (ids.length === 0) return new Map();
+    try {
+      const rows = await this.dataSource.query(
+        'SELECT id, name FROM users WHERE id = ANY($1::uuid[])',
+        [ids]
+      );
+      const map = new Map<string, string>();
+      for (const r of rows as Array<{ id: string; name: string }>) map.set(r.id, r.name);
+      return map;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private async toDto(
+    doc: Document,
+    latest?: DocumentVersion,
+    ownerName?: string | null,
+    currentReviewer: Array<{ userId: string; name: string }> | null = null
+  ): Promise<DocumentDto> {
     const version = latest ?? (await this.versionRepo.findOne({ where: { documentId: doc.id }, order: { versionNo: 'DESC' } }));
+    const filteredReviewer = currentReviewer && currentReviewer.length > 0 ? currentReviewer : null;
     return {
       id: doc.id,
       title: doc.title,
@@ -265,10 +351,68 @@ export class DocumentsService {
       amount: doc.amount,
       status: doc.status,
       ownerId: doc.ownerId,
+      ownerName: ownerName ?? null,
+      currentInstanceId: doc.currentInstanceId,
+      defaultWorkflowId: doc.defaultWorkflowId,
+      currentReviewer: filteredReviewer,
       createdAt: doc.createdAt.toISOString(),
       latestVersion: version
         ? { id: version.id, versionNo: version.versionNo, fileName: version.fileName, size: version.size, mimeType: version.mimeType }
         : null
     };
+  }
+
+  private async loadCurrentReviewers(items: Document[]): Promise<Map<string, Array<{ userId: string; name: string }>>> {
+    const inApproval = items.filter((d) => d.status === DocumentStatus.InApproval && !!d.currentInstanceId);
+    if (inApproval.length === 0) return new Map();
+    const instanceIds = inApproval.map((d) => d.currentInstanceId!).filter((id): id is string => !!id);
+    return this.engine.getCurrentReviewersForInstances(instanceIds);
+  }
+
+  async remove(user: AuthUser, id: string) {
+    const doc = await this.getDocument(id);
+    if (!user?.permissions || !user.permissions.includes('user:manage')) {
+      throw new ForbiddenException('只有系统管理员才能删除文档');
+    }
+    const versions = await this.versionRepo.find({ where: { documentId: id } });
+    const versionIds = versions.map((v) => v.id);
+    if (doc.currentInstanceId) {
+      try {
+        await this.engine.withdraw(doc.currentInstanceId, user.id);
+      } catch (e: any) {
+        // 管理员硬删除：如果审批已有节点被处理或已结束，retract() 会报错；
+        // 下面的事务会把 approval_instances/records/tasks 全部删掉，所以跳过抽回也不影响一致性。
+      }
+    }
+    await this.dataSource.transaction(async (manager) => {
+      const instanceIds = (await manager.query(
+        'SELECT id FROM approval_instances WHERE "documentId" = $1',
+        [id]
+      )) as Array<{ id: string }>;
+      const iids = instanceIds.map((r) => r.id);
+      if (iids.length > 0) {
+        await manager.query('DELETE FROM approval_records WHERE "instanceId" = ANY($1::uuid[])', [iids]);
+        await manager.query('DELETE FROM approval_tasks WHERE "instanceId" = ANY($1::uuid[])', [iids]);
+        await manager.query('DELETE FROM approval_instances WHERE "documentId" = $1', [id]);
+      }
+      if (versionIds.length > 0) {
+        await manager.query('DELETE FROM conversion_jobs WHERE "documentVersionId" = ANY($1::uuid[])', [versionIds]);
+      }
+      await manager.query('DELETE FROM document_versions WHERE "documentId" = $1', [id]);
+      await manager.query('DELETE FROM documents WHERE id = $1', [id]);
+    });
+    for (const v of versions) {
+      try { if (fs.existsSync(v.filePath)) fs.unlinkSync(v.filePath); } catch { /* noop */ }
+    }
+    try {
+      const jobs = await this.jobRepo.find({ where: versionIds.map((vid) => ({ documentVersionId: vid })) as any });
+      for (const j of jobs) {
+        if (j.previewPath && fs.existsSync(j.previewPath)) {
+          try { fs.unlinkSync(j.previewPath); } catch { /* noop */ }
+        }
+      }
+    } catch { /* noop */ }
+    await this.audit.log(user.id, 'document:delete', 'document', id, { title: doc.title, versionCount: versions.length });
+    return { ok: true };
   }
 }

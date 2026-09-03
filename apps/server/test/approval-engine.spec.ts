@@ -27,15 +27,18 @@ function makeEngine(overrides: Partial<Record<string, any>> = {}) {
     record: { save: jest.fn((x: any) => Promise.resolve(x)), create: jest.fn((x: any) => x) },
     notification: { save: jest.fn((x: any) => Promise.resolve(x)), create: jest.fn((x: any) => x) },
     documents: { findOneBy: jest.fn(async () => ({ id: 'd1', amount: '100', categoryId: null })), update: jest.fn() },
+    applications: { update: jest.fn() },
     workflows: { getById: jest.fn() },
     dataSource: { query: jest.fn(async () => []) },
     audit: { log: jest.fn() },
+    mailer: { send: jest.fn(async () => true) },
     ...overrides
   };
   return {
     engine: new ApprovalEngineService(
       repos.instance as any, repos.task as any, repos.record as any, repos.notification as any,
-      repos.documents as any, repos.workflows as any, repos.dataSource as any, repos.audit as any
+      repos.documents as any, repos.applications as any, repos.workflows as any, repos.dataSource as any, repos.audit as any,
+      repos.mailer as any
     ),
     repos
   };

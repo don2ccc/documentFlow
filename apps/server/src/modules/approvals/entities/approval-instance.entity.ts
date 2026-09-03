@@ -8,6 +8,7 @@ export class ApprovalInstance {
   @Column({ type: 'int' }) workflowVersion!: number;
   @Column({ type: 'jsonb' }) snapshot!: WorkflowSnapshot;
   @Column({ type: 'uuid' }) documentId!: string;
+  @Column({ type: 'varchar', default: 'document' }) targetType!: string;
   @Column({ type: 'uuid' }) initiatorId!: string;
   @Column({ type: 'varchar', default: InstanceStatus.Running }) status!: InstanceStatus;
   @Column({ type: 'varchar', nullable: true }) currentNodeId!: string | null;

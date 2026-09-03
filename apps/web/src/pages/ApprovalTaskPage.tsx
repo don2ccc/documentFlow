@@ -3,6 +3,7 @@ import { Button, Card, Col, Descriptions, Input, Modal, Row, Select, Space, Spin
 import { useNavigate, useParams } from 'react-router-dom';
 import { approvalsApi, TaskDetail, usersApi } from '../api/endpoints';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
+import { StatusTag } from '../components/StatusTag';
 
 export function ApprovalTaskPage() {
   const { id } = useParams();
@@ -45,6 +46,8 @@ export function ApprovalTaskPage() {
     navigate('/approvals');
   };
 
+  const formatDateTime = (value?: string) => value ? value.slice(0, 19).replace('T', ' ') : '-';
+
   if (!detail) return <Spin style={{ display: 'block', marginTop: 80 }} />;
 
   return (
@@ -66,10 +69,13 @@ export function ApprovalTaskPage() {
       >
         <Row gutter={24}>
           <Col span={10}>
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="当前节点">{detail.nodeName}</Descriptions.Item>
-              <Descriptions.Item label="金额">{detail.document?.amount ? `¥ ${detail.document.amount}` : '-'}</Descriptions.Item>
-              <Descriptions.Item label="说明">{detail.document?.description || '-'}</Descriptions.Item>
+            <Descriptions column={3} size="small" bordered>
+              <Descriptions.Item label="项目标题">{detail.document?.title ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="状态">{detail.document ? <StatusTag status={detail.document.status} /> : '-'}</Descriptions.Item>
+              <Descriptions.Item label="创建人">{detail.document?.ownerName ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="文件数">{detail.document?.fileCount ?? 0}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">{formatDateTime(detail.document?.createdAt)}</Descriptions.Item>
+              <Descriptions.Item label="最近更新">{formatDateTime(detail.document?.updatedAt)}</Descriptions.Item>
             </Descriptions>
           </Col>
           <Col span={14}>

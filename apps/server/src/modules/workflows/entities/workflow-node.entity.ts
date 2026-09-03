@@ -9,7 +9,7 @@ export class WorkflowNode {
   @Column({ type: 'varchar', nullable: true }) approverRule!: string | null;
   @Column({ type: 'varchar', nullable: true }) approverValue!: string | null;
   @Column({ type: 'varchar', nullable: true }) approvalMethod!: string | null;
-  @Column({ type: 'int', nullable: true }) timeoutHours!: number | null;
+  @Column({ type: 'int', nullable: true }) timeoutDays!: number | null;
   @Column({ type: 'varchar', nullable: true }) timeoutAction!: string | null;
   @Column({ type: 'jsonb', nullable: true }) config!: Record<string, unknown> | null;
   @Column({ type: 'int', default: 0 }) sortOrder!: number;

@@ -11,6 +11,11 @@ import { TransferTaskDto } from './dto/transfer-task.dto';
 export class ApprovalsController {
   constructor(private readonly engine: ApprovalEngineService) {}
 
+  @Get('tasks/by-document/:documentId')
+  taskForDocument(@Param('documentId') documentId: string, @CurrentUser() user: AuthUser) {
+    return this.engine.getTaskForDocument(user, documentId);
+  }
+
   @Get('tasks/:id')
   taskDetail(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.engine.getTaskDetail(user, id);

@@ -9,7 +9,7 @@ export class WorkflowNodeDto {
   @IsOptional() @IsString() approverRule?: string;
   @IsOptional() @IsString() approverValue?: string;
   @IsOptional() @IsString() approvalMethod?: string;
-  @IsOptional() @Type(() => Number) @IsInt() timeoutHours?: number;
+  @IsOptional() @Type(() => Number) @IsInt() timeoutDays?: number;
   @IsOptional() @IsString() timeoutAction?: string;
   @IsOptional() config?: Record<string, unknown>;
 }
@@ -23,5 +23,5 @@ export class WorkflowEdgeDto {
 
 export class SaveWorkflowDto {
   @IsArray() @ArrayNotEmpty() @ValidateNested({ each: true }) @Type(() => WorkflowNodeDto) nodes!: WorkflowNodeDto[];
-  @IsArray() @ValidateNested({ each: true }) @Type(() => WorkflowEdgeDto) edges!: WorkflowEdgeDto[];
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => WorkflowEdgeDto) edges?: WorkflowEdgeDto[];
 }

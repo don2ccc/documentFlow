@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'documentflow-api',
-      script: 'dist/src/main.js',
+      script: 'apps/server/dist/src/main.js',
       cwd: '/opt/documentflow',
       instances: 1,
       autorestart: true,
@@ -11,7 +11,7 @@ module.exports = {
     },
     {
       name: 'documentflow-worker',
-      script: 'dist/src/main-worker.js',
+      script: 'apps/server/dist/src/main-worker.js',
       cwd: '/opt/documentflow',
       autorestart: true,
       env: { NODE_ENV: 'production' }

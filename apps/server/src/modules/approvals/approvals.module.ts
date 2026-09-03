@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Document } from '../documents/entities/document.entity';
+import { Application } from '../applications/entities/application.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { AuditModule } from '../audit/audit.module';
@@ -13,7 +14,7 @@ import { ApprovalTask } from './entities/approval-task.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApprovalInstance, ApprovalTask, ApprovalRecord, Document]),
+    TypeOrmModule.forFeature([ApprovalInstance, ApprovalTask, ApprovalRecord, Document, Application]),
     AuditModule,
     WorkflowsModule,
     NotificationsModule

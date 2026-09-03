@@ -31,10 +31,18 @@ export class ConverterService {
         fs.copyFileSync(version.filePath, outFile);
       } else {
         fs.mkdirSync(this.previewDir, { recursive: true });
+        const proc = execFile('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', this.previewDir, version.filePath]);
         await new Promise<void>((resolve, reject) => {
-          execFile('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', this.previewDir, version.filePath], (err) =>
-            err ? reject(err) : resolve()
-          );
+          const t = setTimeout(() => {
+            try { proc.kill('SIGKILL'); } catch (_) {}
+            reject(new Error('libreoffice 转换超时(90s)'));
+          }, 90_000);
+          let resolved = false;
+          proc.on('exit', (code) => {
+            clearTimeout(t);
+            if (!resolved) { resolved = true; code === 0 ? resolve() : reject(new Error('libreoffice 退出码 ' + code)); }
+          });
+          proc.on('error', (e) => { if (!resolved) { resolved = true; clearTimeout(t); reject(e); } });
         });
         const produced = fs.readdirSync(this.previewDir).filter((f) => f.endsWith('.pdf') && f.includes(version.id));
         const src = produced[0] ?? path.join(this.previewDir, `${path.basename(version.filePath, path.extname(version.filePath))}.pdf`);

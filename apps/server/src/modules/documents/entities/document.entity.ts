@@ -11,6 +11,7 @@ export class Document {
   @Column({ type: 'uuid' }) ownerId!: string;
   @Column({ type: 'varchar', default: DocumentStatus.Draft }) status!: DocumentStatus;
   @Column({ type: 'uuid', nullable: true }) currentInstanceId!: string | null;
+  @Column({ type: 'uuid', nullable: true }) defaultWorkflowId!: string | null;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
   @Column({ type: 'timestamptz', default: () => 'now()' }) updatedAt!: Date;
 }

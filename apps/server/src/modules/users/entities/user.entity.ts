@@ -10,8 +10,12 @@ export class User {
   @Column() name!: string;
   @Column({ type: 'varchar', nullable: true }) employeeNo!: string | null;
   @Column({ type: 'varchar', nullable: true }) email!: string | null;
+  @Column({ type: 'varchar', nullable: true }) directSupervisor!: string | null;
+  @Column({ type: 'varchar', nullable: true }) productionLine!: string | null;
+  @Column({ type: 'varchar', nullable: true }) position!: string | null;
   @Column({ type: 'uuid', nullable: true }) departmentId!: string | null;
   @Column({ type: 'varchar', default: UserStatus.Pending }) status!: UserStatus;
+  @Column({ type: 'boolean', default: false }) mustChangePassword!: boolean;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
   @ManyToMany(() => Role, (r) => r.users)
   @JoinTable({ name: 'user_roles', joinColumn: { name: 'userId', referencedColumnName: 'id' }, inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' } })

@@ -45,6 +45,8 @@ export class ApprovalTimeoutWorker implements OnModuleInit, OnModuleDestroy {
         await this.engine.handleTask(task.id, 'system', 'approve', '超时自动同意');
       } else if (node.timeoutAction === TimeoutAction.AutoReject) {
         await this.engine.handleTask(task.id, 'system', 'reject', '超时自动驳回');
+      } else if (node.timeoutAction === TimeoutAction.ReturnToInitiator) {
+        await this.engine.returnToInitiator(task.id, instance.id, node);
       }
     }
   }
