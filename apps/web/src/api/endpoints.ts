@@ -245,7 +245,7 @@ export interface Building { id: string; name: string; address: string | null; to
 export interface Room { id: string; buildingId: string; buildingName?: string; floor: number; roomNo: string; type: RoomType; totalBeds: number; bedTotal?: number; bedOccupied?: number; notes: string | null; createdAt: string; }
 export interface Bed { id: string; roomId: string; roomNo?: string; buildingName?: string; bedNo: string; status: BedStatus; notes: string | null; }
 export interface Asset { id: string; roomId: string; roomNo?: string; buildingName?: string; name: string; type: AssetType; brand: string | null; model: string | null; serialNo: string | null; purchaseDate: string | null; status: AssetStatus; damageNote: string | null; createdAt: string; }
-export interface Resident { id: string; employeeNo: string; name: string; department: string | null; phone: string | null; hireDate: string | null; bedId: string | null; bedNo: string | null; roomNo: string | null; floor: number | null; buildingName: string | null; roomType: string | null; checkInDate: string; checkOutDate: string | null; status: ResidentStatus; notes: string | null; createdAt: string; }
+export interface Resident { id: string; employeeNo: string; name: string; department: string | null; phone: string | null; hireDate: string | null; bedId: string | null; bedNo: string | null; roomNo: string | null; floor: number | null; buildingName: string | null; roomType: string | null; checkInDate: string; checkOutDate: string | null; checkOutItemsCheck: string | null; checkOutSettlement: string | null; status: ResidentStatus; notes: string | null; createdAt: string; }
 export interface DormitoryOverview { buildings: number; rooms: number; beds: number; occupiedBeds: number; residents: number; availableBeds: number; arrears: number; arrearsCount: number; }
 
 export interface MeterReading { id: string; roomId: string; roomNo?: string; buildingName?: string; period: string; electricReading: string; waterReading: string; electricUsage: string; waterUsage: string; publicElectricUsage: string; publicWaterUsage: string; readingDate: string; recordedBy: string | null; notes: string | null; createdAt: string; }
@@ -301,5 +301,21 @@ export const dormitoryApi = {
   arrearsList: () => api.get<BillArrears[]>('/dormitory/bills/arrears').then((r) => r.data),
   markBillPaid: (id: string, paidAmount: number, notes?: string) => api.post<Bill>(`/dormitory/bills/${id}/pay`, { paidAmount, notes }).then((r) => r.data),
   voidBill: (id: string) => api.post<Bill>(`/dormitory/bills/${id}/void`, {}).then((r) => r.data),
-  getBill: (id: string) => api.get<Bill>(`/dormitory/bills/${id}`).then((r) => r.data)
+  getBill: (id: string) => api.get<Bill>(`/dormitory/bills/${id}`).then((r) => r.data),
+  // ===== 一键导出 =====
+  exportResidents: () => api.get<Blob>('/dormitory/residents/export.csv', { responseType: 'blob' }).then((r) => r.data),
+  exportBills: (params?: { period?: string; status?: string }) => api.get<Blob>('/dormitory/bills/export.csv', { params: params || {}, responseType: 'blob' }).then((r) => r.data)
 };
+
+// 浏览器端触发下载 Blob
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+}
+

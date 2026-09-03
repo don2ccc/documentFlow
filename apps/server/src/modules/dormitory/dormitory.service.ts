@@ -24,6 +24,14 @@ import { GenerateBillsDto } from './dto/generate-bills.dto';
 import { MarkBillPaidDto } from './dto/mark-bill-paid.dto';
 
 function round2(n: number) { return Math.round(n * 100) / 100; }
+function csvEscape(v: any): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes("\"") || s.includes("\n") || s.includes("\r")) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
 
 @Injectable()
 export class DormitoryService {
@@ -201,7 +209,11 @@ export class DormitoryService {
   async createResident(dto: CreateResidentDto) {
     if (await this.residentRepo.findOneBy({ employeeNo: dto.employeeNo })) throw new BadRequestException('该工号已存在入住记录');
     return this.dataSource.transaction(async (mgr) => {
-      const r = await mgr.save(mgr.create(Resident, { ...dto, status: '在住' }));
+      const payload: any = { ...dto, status: '在住' };
+      if (payload.checkOutSettlement !== undefined && payload.checkOutSettlement !== null) {
+        payload.checkOutSettlement = String(payload.checkOutSettlement);
+      }
+      const r = await mgr.save(mgr.create(Resident, payload));
       if (dto.bedId) {
         const bed = await mgr.findOne(Bed, { where: { id: dto.bedId } });
         if (!bed) throw new BadRequestException('床位不存在');
@@ -217,7 +229,15 @@ export class DormitoryService {
     if (!r) throw new NotFoundException('入住记录不存在');
     return this.dataSource.transaction(async (mgr) => {
       const oldBedId = r.bedId;
-      Object.assign(r, dto);
+      const wasIn = r.status === '在住';
+      // 数字字段转换为字符串以匹配实体类型
+      const payload: any = { ...dto };
+      if (payload.checkOutSettlement !== undefined && payload.checkOutSettlement !== null) {
+        payload.checkOutSettlement = String(payload.checkOutSettlement);
+      }
+      Object.assign(r, payload);
+      // 状态从 在住 → 已退宿 时若未指定 checkOutDate 默认今天
+      if (wasIn && r.status === '已退宿' && !r.checkOutDate) r.checkOutDate = new Date().toISOString().slice(0, 10);
       const saved = await mgr.save(r);
       if (dto.bedId !== undefined && dto.bedId !== oldBedId) {
         if (oldBedId) {
@@ -487,6 +507,51 @@ export class DormitoryService {
       arrears: round2(totalAmount - paidAmount),
       paidCount, partialCount, unpaidCount, overdueCount, voidCount
     };
+  }
+
+  // ===================== 一键导出 =====================
+  // 宿舍人员台账 CSV
+  async exportResidentsCsv(): Promise<string> {
+    const list = await this.residentRepo.find({ order: { createdAt: 'DESC' } });
+    const bedIds = list.map((r) => r.bedId).filter((x): x is string => !!x);
+    const beds = bedIds.length ? await this.bedRepo.find({ where: { id: In(bedIds) }, relations: { room: { building: true } } }) : [];
+    const map = new Map(beds.map((b) => [b.id, b]));
+    const header = ['工号','姓名','部门','手机','入职日期','楼栋','房间','层','床位','房间类型','入住日期','退宿日期','状态','物品查验','结算费用','备注'];
+    const rows = list.map((r) => {
+      const b = r.bedId ? map.get(r.bedId) : null;
+      return [
+        r.employeeNo, r.name, r.department ?? '', r.phone ?? '', r.hireDate ?? '',
+        b?.room?.building?.name ?? '', b?.room?.roomNo ?? '', b?.room?.floor ?? '', b?.bedNo ?? '',
+        b?.room?.type ?? '',
+        r.checkInDate, r.checkOutDate ?? '', r.status,
+        r.checkOutItemsCheck ?? '',
+        r.checkOutSettlement ?? '',
+        r.notes ?? ''
+      ].map(csvEscape).join(',');
+    });
+    return [header.join(','), ...rows].join('\n');
+  }
+
+  // 财务/账单 CSV
+  async exportBillsCsv(filter: { period?: string; status?: string }): Promise<string> {
+    const where: any = {};
+    if (filter.period) where.period = filter.period;
+    if (filter.status) where.status = filter.status;
+    const bills = await this.billRepo.find({ where, relations: { resident: { bed: { room: { building: true } } } }, order: { period: 'DESC' } });
+    const header = ['账期','工号','姓名','部门','楼栋','房间','床位','电费','水费','住宿费','押金','其他','总计','已付','欠款','状态','缴费截止','实付时间'];
+    const rows = bills.map(b => {
+      const res = b.resident;
+      const arrears = (Number(b.totalAmount) - Number(b.paidAmount)).toFixed(2);
+      return [
+        b.period,
+        res?.employeeNo ?? '', res?.name ?? '', res?.department ?? '',
+        res?.bed?.room?.building?.name ?? '', res?.bed?.room?.roomNo ?? '', res?.bed?.bedNo ?? '',
+        b.electricFee, b.waterFee, b.roomFee, b.deposit, b.otherFee,
+        b.totalAmount, b.paidAmount, arrears, b.status, b.dueDate,
+        b.paidAt ? new Date(b.paidAt).toISOString().slice(0, 19).replace('T', ' ') : ''
+      ].map(csvEscape).join(',');
+    });
+    return [header.join(','), ...rows].join('\n');
   }
 
   // 首页统计：楼栋 + 入住 + 当期费用概览

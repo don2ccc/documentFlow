@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, message } from "antd";
 import {
-  ApartmentOutlined, HomeOutlined, ShopOutlined, ToolOutlined, IdcardOutlined,
+  ApartmentOutlined, HomeOutlined, ShopOutlined, ToolOutlined, IdcardOutlined, DownloadOutlined,
   PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DollarOutlined, ThunderboltOutlined, FileTextOutlined
 } from "@ant-design/icons";
 import {
   Building, Room, Bed, Asset, Resident, DormitoryOverview,
   MeterReading, Bill, BillArrears, BillStatistics, BillStatus,
   RoomType, BedStatus, AssetType, AssetStatus, ResidentStatus,
-  dormitoryApi
+  dormitoryApi,
+  downloadBlob
 } from "../../api/endpoints";
 
 const ROOM_TYPES: RoomType[] = ["\u56db\u4eba\u95f4", "\u53cc\u4eba\u95f4", "\u5355\u4eba\u95f4"];
@@ -394,6 +395,14 @@ function ResidentsTab({ residents, beds, onChanged }: { residents: Resident[]; b
     <>
       <Space style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => start()}>\u65b0\u589e\u5165\u4f4f\u8bb0\u5f55</Button>
+        <Button icon={<DownloadOutlined />} onClick={async () => {
+          try {
+            const blob = await dormitoryApi.exportResidents();
+            const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+            downloadBlob(blob, `宿舍人员台账_${ts}.csv`);
+            message.success("已导出宿舍人员名单");
+          } catch (e: any) { message.error(e?.message ?? "导出失败"); }
+        }}>\u4e00\u952e\u5bfc\u51fa\u4eba\u5458\u540d\u5355</Button>
       </Space>
       <Table rowKey="id" dataSource={residents} pagination={{ pageSize: 20 }} size="small"
         columns={[
@@ -406,6 +415,8 @@ function ResidentsTab({ residents, beds, onChanged }: { residents: Resident[]; b
           { title: "\u5e8a\u4f4d", dataIndex: "bedNo", width: 80 },
           { title: "\u5165\u4f4f\u65e5", dataIndex: "checkInDate", width: 110 },
           { title: "\u9000\u5bbf\u65e5", dataIndex: "checkOutDate", width: 110 },
+          { title: "\u9000\u5bbf\u7269\u54c1\u67e5\u9a8c", dataIndex: "checkOutItemsCheck", width: 160, ellipsis: true },
+          { title: "\u7ed3\u7b97\u8d39\u7528", dataIndex: "checkOutSettlement", width: 100, align: "right", render: (v: string | null) => v ? Number(v).toFixed(2) : "-" },
           { title: "\u72b6\u6001", dataIndex: "status", width: 90, render: (v: ResidentStatus) => <Tag color={statusColor(v)}>{v}</Tag> },
           { title: "\u64cd\u4f5c", width: 140, render: (_: unknown, r: Resident) => (
             <Space>
@@ -434,6 +445,10 @@ function ResidentsTab({ residents, beds, onChanged }: { residents: Resident[]; b
           <Row gutter={16}>
             <Col span={12}><Form.Item name="checkInDate" label="\u5165\u4f4f\u65e5\u671f" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
             <Col span={12}><Form.Item name="checkOutDate" label="\u9000\u5bbf\u65e5\u671f"><Input type="date" placeholder="\u672a\u9000\u5bbf\u7559\u7a7a" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Item name="checkOutItemsCheck" label="\u9000\u5bbf\u7269\u54c1\u67e5\u9a8c"><Input.TextArea rows={2} placeholder="\u4f8b\uff1a\u94a5\u53192\u628a/\u7535\u53611\u5f20/\u5e8a\u57ab\u5b8c\u597d" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="checkOutSettlement" label="\u9000\u5bbf\u7ed3\u7b97\u8d39\u7528"><InputNumber min={0} step={0.01} style={{ width: "100%" }} placeholder="\u5143" /></Form.Item></Col>
           </Row>
           <Form.Item name="status" label="\u72b6\u6001" initialValue="\u5728\u4f4f">
             <Select options={RESIDENT_STATUSES.map((s) => ({ value: s, label: s }))} />
@@ -648,6 +663,14 @@ function BillsTab({ residents, onChanged }: { rooms: Room[]; residents: Resident
       <Space style={{ marginBottom: 12 }} wrap>
         <Input placeholder="\u8d26\u671f (YYYY-MM)" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: 160 }} />
         <Button onClick={load}>\u67e5\u8be2</Button>
+        <Button icon={<DownloadOutlined />} onClick={async () => {
+          try {
+            const blob = await dormitoryApi.exportBills({ period: period || undefined });
+            const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+            downloadBlob(blob, `宿舍账单_${period || "全部"}_${ts}.csv`);
+            message.success("已导出财务报表");
+          } catch (e: any) { message.error(e?.message ?? "导出失败"); }
+        }}>\u5bfc\u51fa\u8d22\u52a1\u62a5\u8868</Button>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => {
           genForm.resetFields();
           genForm.setFieldsValue({

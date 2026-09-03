@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { DormitoryService } from './dormitory.service';
 import { CreateBuildingDto } from './dto/create-building.dto';
@@ -155,6 +156,14 @@ export class DormitoryController {
   @RequirePermission('dormitory:manage')
   billStatistics(@Query('period') period?: string) { return this.svc.billStatistics(period); }
 
+  @Get('bills/export.csv')
+  @RequirePermission('dormitory:manage')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="dormitory_bills.csv"')
+  async exportBills(@Query('period') period: string | undefined, @Query('status') status: string | undefined, @Res() res: Response) {
+    const csv = '\ufeff' + (await this.svc.exportBillsCsv({ period, status }));
+    res.send(csv);
+  }
   @Get('bills/:id')
   @RequirePermission('dormitory:manage')
   getBill(@Param('id') id: string) { return this.svc.getBill(id); }
@@ -166,5 +175,16 @@ export class DormitoryController {
   @Post('bills/:id/void')
   @RequirePermission('dormitory:manage')
   voidBill(@Param('id') id: string) { return this.svc.voidBill(id); }
+
+  // ====== 一键导出 ======
+  @Get('residents/export.csv')
+  @RequirePermission('dormitory:manage')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="dormitory_residents.csv"')
+  async exportResidents(@Res() res: Response) {
+    const csv = '\ufeff' + (await this.svc.exportResidentsCsv());
+    res.send(csv);
+  }
+
 }
 

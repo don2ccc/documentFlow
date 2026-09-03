@@ -16,6 +16,9 @@ export class Resident {
   @Column({ type: 'uuid', nullable: true }) bedId!: string | null;
   @Column({ type: 'date' }) checkInDate!: string;
   @Column({ type: 'date', nullable: true }) checkOutDate!: string | null;
+  // 退宿物品查验 + 结算费用
+  @Column({ type: 'text', nullable: true }) checkOutItemsCheck!: string | null;
+  @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true }) checkOutSettlement!: string | null;
   @Column({ type: 'varchar', default: '在住' }) status!: ResidentStatus;
   @Column({ type: 'text', nullable: true }) notes!: string | null;
   @CreateDateColumn() createdAt!: Date;
