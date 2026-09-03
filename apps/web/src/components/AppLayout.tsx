@@ -4,11 +4,17 @@ import {
   AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined,
   ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined,
   SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined,
-  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined
+  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 
 const { Sider, Header, Content } = Layout;
+
+const KEY_WORKFLOW = "menu-workflow";
+const KEY_ADMIN = "menu-admin";
+const KEY_PRODUCTION = "menu-production";
+const KEY_HR = "menu-hr";
+const KEY_SYSTEM = "menu-system";
 
 export function AppLayout() {
   const { user, permissions, logout } = useAuth();
@@ -35,39 +41,63 @@ export function AppLayout() {
     ...(has("database:manage") ? [{ key: "/admin/database", icon: <DatabaseOutlined />, label: "数据库管理" }] : [])
   ];
 
-  const items: any[] = [];
-  if (workflowChildren.length || systemAdminChildren.length) {
-    const wfGroupChildren: any[] = [...workflowChildren];
-    if (systemAdminChildren.length) {
-      wfGroupChildren.push({ type: "group", label: "系统管理", children: systemAdminChildren });
+  const adminChildren: any[] = [
+    { key: "/admin/dormitory", icon: <HomeOutlined />, label: "宿舍管理" },
+    { key: "/admin/labor-protection", icon: <SkinOutlined />, label: "劳保用品" }
+  ];
+
+  const items: any[] = [
+    {
+      key: KEY_WORKFLOW,
+      icon: <ApartmentOutlined />,
+      label: "WorkFlow管理",
+      children: workflowChildren
+    },
+    {
+      key: KEY_ADMIN,
+      icon: <BankOutlined />,
+      label: "行政管理",
+      children: adminChildren
+    },
+    {
+      key: KEY_PRODUCTION,
+      icon: <ToolOutlined />,
+      label: "生产管理",
+      children: [{ key: "/production", icon: <ToolOutlined />, label: "（正在开发中）" }]
+    },
+    {
+      key: KEY_HR,
+      icon: <IdcardOutlined />,
+      label: "HR管理",
+      children: [{ key: "/hr", icon: <IdcardOutlined />, label: "（正在开发中）" }]
     }
-    items.push({ type: "group", label: "WorkFlow管理", children: wfGroupChildren });
+  ];
+
+  if (systemAdminChildren.length) {
+    items.push({
+      key: KEY_SYSTEM,
+      icon: <SettingOutlined />,
+      label: "系统管理",
+      children: systemAdminChildren
+    });
   }
 
-  items.push({
-    type: "group",
-    label: "行政管理",
-    children: [
-      { key: "/admin/dormitory", icon: <HomeOutlined />, label: "宿舍管理" },
-      { key: "/admin/labor-protection", icon: <SkinOutlined />, label: "劳保用品" }
-    ]
-  });
-  items.push({
-    type: "group",
-    label: "生产管理",
-    children: [{ key: "/production", icon: <ToolOutlined />, label: "（正在开发中）" }]
-  });
-  items.push({
-    type: "group",
-    label: "HR管理",
-    children: [{ key: "/hr", icon: <IdcardOutlined />, label: "（正在开发中）" }]
-  });
+  // 默认全部展开，用户可点击折叠
+  const defaultOpenKeys = [KEY_WORKFLOW, KEY_ADMIN, KEY_PRODUCTION, KEY_HR];
+  if (systemAdminChildren.length) defaultOpenKeys.push(KEY_SYSTEM);
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider theme="dark" width={220}>
         <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, padding: 16, textAlign: "center" }}>SPO办公系统</div>
-        <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={items} onClick={(e) => navigate(e.key)} />
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname]}
+          defaultOpenKeys={defaultOpenKeys}
+          items={items}
+          onClick={(e) => navigate(e.key)}
+        />
       </Sider>
       <Layout>
         <Header style={{ background: "#fff", display: "flex", justifyContent: "flex-end", alignItems: "center", paddingInline: 24 }}>
