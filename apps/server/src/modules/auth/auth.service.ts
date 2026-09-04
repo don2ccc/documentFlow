@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { ILike, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserStatus } from '@document-flow/shared';
 import { UsersService } from '../users/users.service';
@@ -65,15 +65,23 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<{ ok: true }> {
     const username = dto.username.trim();
     const email = dto.email.trim().toLowerCase();
-    if (await this.userRepo.findOne({ where: [{ username }, { email }] })) {
-      throw new ConflictException('用户名或邮箱已被占用');
+    const employeeNo = dto.employeeNo?.trim() || null;
+    // 用户名、工号、邮箱都需单独检查，且用户名/工号不区分大小写。
+    if (await this.userRepo.findOne({ where: { username: ILike(username) } })) {
+      throw new ConflictException('用户名已被占用');
+    }
+    if (await this.userRepo.findOne({ where: { email } })) {
+      throw new ConflictException('邮箱已被占用');
+    }
+    if (employeeNo && await this.userRepo.findOne({ where: { employeeNo: ILike(employeeNo) } })) {
+      throw new ConflictException('工号已被占用');
     }
     const user = this.userRepo.create({
       username,
       passwordHash: await bcrypt.hash(dto.password, 10),
       name: dto.name.trim(),
       email,
-      employeeNo: dto.employeeNo ?? null,
+      employeeNo,
       directSupervisor: dto.directSupervisor ?? null,
       workshopId: dto.workshopId ?? null,
       position: dto.position ?? null,

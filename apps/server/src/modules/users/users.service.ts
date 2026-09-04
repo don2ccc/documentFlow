@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { In, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { UserBriefDto, UserStatus } from '@document-flow/shared';
 import { Role } from '../roles/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
@@ -24,7 +24,7 @@ export class UsersService {
   ) {}
 
   async findByUsernameWithRoles(username: string): Promise<User | null> {
-    return this.repo.findOne({ where: { username }, relations: { roles: { permissions: true } } });
+    return this.repo.findOne({ where: { username: ILike(username) }, relations: { roles: { permissions: true } } });
   }
 
   async findById(id: string): Promise<User | null> {
