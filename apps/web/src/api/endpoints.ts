@@ -364,3 +364,30 @@ export interface StorageInfo {
 export const systemMonitorApi = {
   storage: () => api.get<StorageInfo>(`/system-monitor/storage`).then((r) => r.data)
 };
+
+
+export interface AppVersion {
+  version: string;
+  commit: string;
+  branch: string;
+  builtAt: string;
+  subject: string;
+}
+
+export interface VersionEntry {
+  tag: string;
+  sha: string;
+  date: string;
+  subject: string;
+}
+
+export interface VersionsResponse {
+  current: string;
+  versions: VersionEntry[];
+}
+
+export const versionsApi = {
+  current: () => api.get<AppVersion>(`/system-settings/version`).then((r) => r.data),
+  list: () => api.get<VersionsResponse>(`/system-settings/versions`).then((r) => r.data),
+  rollback: (tag: string) => api.post<{ ok: boolean; message: string }>(`/system-settings/versions/${encodeURIComponent(tag)}/rollback`, {}).then((r) => r.data)
+};

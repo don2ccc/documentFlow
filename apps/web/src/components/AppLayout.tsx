@@ -3,10 +3,12 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined,
   ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined,
-  SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined,
+  SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined, HistoryOutlined,
   ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined
 } from "@ant-design/icons";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { versionsApi, AppVersion } from "../api/endpoints";
 import { StorageIndicator } from "./StorageIndicator";
 
 const SIDEBAR_CSS = `
@@ -139,6 +141,10 @@ const KEY_SYSTEM = "menu-system";
 
 export function AppLayout() {
   const { user, permissions, logout } = useAuth();
+  const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
+  useEffect(() => {
+    versionsApi.current().then(setAppVersion).catch(() => setAppVersion(null));
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -162,6 +168,7 @@ export function AppLayout() {
     ...(has("workflow:manage") ? [{ key: "/admin/workflows", icon: <ApartmentOutlined />, label: "流程配置" }] : []),
     ...(has("audit:view") ? [{ key: "/admin/audit", icon: <AuditOutlined />, label: "审计日志" }] : []),
     ...(has("setting:manage") ? [{ key: "/admin/settings", icon: <SettingOutlined />, label: "邮件设置" }] : []),
+    ...(has("setting:manage") || user?.roles?.includes("sys_admin") ? [{ key: "/admin/versions", icon: <HistoryOutlined />, label: "版本管理" }] : []),
     ...(has("database:manage") ? [{ key: "/admin/database", icon: <DatabaseOutlined />, label: "数据库管理" }] : [])
   ];
 
@@ -232,6 +239,15 @@ export function AppLayout() {
           onClick={(e) => navigate(e.key)}
         />
         </div>
+        {appVersion ? (
+          <div style={{ margin: "6px 16px 4px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,0.55)", letterSpacing: 0.3 }}>
+            <span>版本</span>
+            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "rgba(255,255,255,0.85)" }}>
+              {appVersion.version}
+              {appVersion.commit ? <span style={{ opacity: 0.5 }}> · {appVersion.commit}</span> : null}
+            </span>
+          </div>
+        ) : null}
         <StorageIndicator />
       </Sider>
       <Layout>

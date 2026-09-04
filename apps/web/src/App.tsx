@@ -22,6 +22,7 @@ import { WorkflowsPage } from './pages/admin/WorkflowsPage';
 import { WorkflowEditPage } from './pages/admin/WorkflowEditPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
 import { SystemSettingsPage } from './pages/admin/SystemSettingsPage';
+import { VersionsPage } from './pages/admin/VersionsPage';
 import { DatabaseManagementPage } from './pages/admin/DatabaseManagementPage';
 import { DormitoryPage } from './pages/admin/DormitoryPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
@@ -54,6 +55,7 @@ export function App() {
                 <Route path="/admin/workflows/:id" element={<WorkflowEditPage />} />
                 <Route path="/admin/audit" element={<AuditLogsPage />} />
                 <Route path="/admin/settings" element={<SystemSettingsPage />} />
+                <Route path="/admin/versions" element={<VersionsPage />} />
                 <Route path="/admin/database" element={<DatabaseManagementPage />} />
                 <Route path="/admin/dormitory" element={<DormitoryPage />} />
                 <Route path="/admin/labor-protection" element={<ComingSoonPage />} />
