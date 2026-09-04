@@ -124,15 +124,16 @@ export interface WorkshopFlatItem {
   name: string;
   parentId: string | null;
   managerId: string | null;
+  departmentId: string | null;
   createdAt: string;
 }
 
 export const workshopsApi = {
   tree: () => api.get<DepartmentNode[]>('/workshops/tree').then((r) => r.data),
   list: () => api.get<WorkshopFlatItem[]>('/workshops').then((r) => r.data),
-  create: (data: { name: string; parentId?: string | null; managerId?: string | null }) =>
+  create: (data: { name: string; parentId?: string | null; managerId?: string | null; departmentId?: string | null }) =>
     api.post('/workshops', data).then((r) => r.data),
-  update: (id: string, data: { name?: string; parentId?: string | null; managerId?: string | null }) =>
+  update: (id: string, data: { name?: string; parentId?: string | null; managerId?: string | null; departmentId?: string | null }) =>
     api.patch(`/workshops/${id}`, data).then((r) => r.data),
   remove: (id: string) => api.delete(`/workshops/${id}`).then((r) => r.data)
 };

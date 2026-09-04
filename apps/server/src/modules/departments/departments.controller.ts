@@ -7,25 +7,30 @@ import { CreateDepartmentDto } from './dto/create-department.dto';
 export class DepartmentsController {
   constructor(private readonly departments: DepartmentsService) {}
 
+  @Get()
+  list() {
+    return this.departments.list();
+  }
+
   @Get('tree')
   tree() {
     return this.departments.tree();
   }
 
   @Post()
-  @RequirePermission('user:manage')
+  @RequirePermission('department:manage')
   create(@Body() dto: CreateDepartmentDto) {
     return this.departments.create(dto);
   }
 
   @Patch(':id')
-  @RequirePermission('user:manage')
+  @RequirePermission('department:manage')
   update(@Param('id') id: string, @Body() dto: CreateDepartmentDto) {
     return this.departments.update(id, dto);
   }
 
   @Delete(':id')
-  @RequirePermission('user:manage')
+  @RequirePermission('department:manage')
   remove(@Param('id') id: string) {
     return this.departments.remove(id);
   }

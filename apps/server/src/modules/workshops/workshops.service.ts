@@ -37,7 +37,7 @@ export class WorkshopsService {
       throw new ConflictException('科室名称已存在');
     }
     return this.repo.save(
-      this.repo.create({ name: dto.name, parentId: dto.parentId ?? null, managerId: dto.managerId ?? null })
+      this.repo.create({ name: dto.name, parentId: dto.parentId ?? null, managerId: dto.managerId ?? null, departmentId: dto.departmentId ?? null })
     );
   }
 
@@ -48,6 +48,7 @@ export class WorkshopsService {
     if (dto.name !== undefined) w.name = dto.name;
     if (dto.parentId !== undefined) w.parentId = dto.parentId;
     if (dto.managerId !== undefined) w.managerId = dto.managerId;
+    if (dto.departmentId !== undefined) w.departmentId = dto.departmentId;
     return this.repo.save(w);
   }
 

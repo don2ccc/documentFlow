@@ -20,6 +20,55 @@ type PreviewState =
   | { kind: 'failed'; message: string }
   | { kind: 'forbidden' };
 
+const RIGHT_PANEL_CSS = `
+.app-doc-right-card.ant-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.app-doc-right-card.ant-card > .ant-card-head {
+  border-bottom: 1px solid #eef2f7;
+  min-height: 44px;
+  padding: 0 16px;
+}
+.app-doc-right-card.ant-card > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+.app-doc-right-card.ant-card > .ant-card-body {
+  padding: 14px 16px 16px;
+}
+.app-doc-right-card .ant-descriptions-item-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 400;
+  width: 88px;
+}
+.app-doc-right-card .ant-descriptions-item-content {
+  color: #0f172a;
+  font-size: 13px;
+}
+.app-doc-right-version-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #0f172a;
+  border-bottom: 1px dashed #eef2f7;
+}
+.app-doc-right-version-row:last-child {
+  border-bottom: none;
+}
+.app-doc-right-version-row a,
+.app-doc-right-version-row .app-doc-right-version-disabled {
+  font-size: 13px;
+}
+`;
+
 export function DocumentDetailPage() {
   const { id } = useParams();
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
@@ -202,6 +251,7 @@ export function DocumentDetailPage() {
 
   return (
     <div data-build={_BUILD}>
+      <style>{RIGHT_PANEL_CSS}</style>
       <Card
         title={<Space><span>{detail.title}</span><StatusTag status={detail.status} /></Space>}
         extra={
@@ -273,7 +323,7 @@ export function DocumentDetailPage() {
             </Card>
           </Col>
           <Col span={8}>
-            <Card size="small" title="基本信息">
+            <Card size="small" title="基本信息" className="app-doc-right-card">
               <Descriptions column={1} size="small">
                 <Descriptions.Item label="创建人">{detail.ownerName || '-'}</Descriptions.Item>
                 <Descriptions.Item label="分类">{detail.categoryId ? '已分类' : '未分类'}</Descriptions.Item>
@@ -282,14 +332,14 @@ export function DocumentDetailPage() {
                 <Descriptions.Item label="上传时间">{detail.createdAt.slice(0, 16).replace('T', ' ')}</Descriptions.Item>
               </Descriptions>
             </Card>
-            <Card size="small" title="版本历史" style={{ marginTop: 16 }}>
+            <Card size="small" title="版本历史" className="app-doc-right-card" style={{ marginTop: 16 }}>
               {detail.versions.map((v) => (
-                <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+                <div key={v.id} className="app-doc-right-version-row">
                   <span>v{v.versionNo} · {v.fileName}</span>
                   {canDownload ? (
                     <a onClick={(e) => { e.preventDefault(); downloadVersion(detail.id, v.id, v.fileName); }} href="#">下载</a>
                   ) : (
-                    <span style={{ color: '#bbb' }} title="需要 document:download 权限">下载</span>
+                    <span className="app-doc-right-version-disabled" style={{ color: '#bbb' }} title="需要 document:download 权限">下载</span>
                   )}
                 </div>
               ))}

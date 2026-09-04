@@ -7,24 +7,45 @@ interface AuthState {
   token: string | null;
   permissions: string[];
   mustChangePassword: boolean;
-  login: (username: string, password: string) => Promise<{ mustChangePassword: boolean }>;
+  login: (username: string, password: string, remember?: boolean) => Promise<{ mustChangePassword: boolean }>;
   logout: () => void;
   clearMustChangePassword: () => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 const MCP_FLAG_KEY = 'auth-must-change-password';
+const REMEMBER_KEY = 'auth-remember';
+const TOKEN_KEY = 'token';
+const USER_KEY = 'auth-user';
+
+// remember=true  → localStorage (持久)
+// remember=false → sessionStorage (关闭浏览器即失效)
+function pickStorage(remember: boolean): Storage {
+  return remember ? localStorage : sessionStorage;
+}
+
+function readToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  // 默认按 localStorage 读取，兼容旧版无 REMEMBER_KEY 的浏览器
+  const remembered = localStorage.getItem(REMEMBER_KEY) !== '0';
+  return pickStorage(remembered).getItem(TOKEN_KEY);
+}
+
+function readUser<T>(): T | null {
+  if (typeof window === 'undefined') return null;
+  const remembered = localStorage.getItem(REMEMBER_KEY) !== '0';
+  const raw = pickStorage(remembered).getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [user, setUser] = useState<AuthState['user']>(() => {
-    try {
-      const raw = localStorage.getItem('auth-user');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [token, setToken] = useState<string | null>(() => readToken());
+  const [user, setUser] = useState<AuthState['user']>(() => readUser<AuthState['user']>());
   const [mustChangePassword, setMustChangePassword] = useState<boolean>(
     () => localStorage.getItem(MCP_FLAG_KEY) === '1'
   );
@@ -50,10 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, remember = true) => {
     const result = await authApi.login(username, password);
-    localStorage.setItem('token', result.accessToken);
-    localStorage.setItem('auth-user', JSON.stringify(result.user));
+    const storage = pickStorage(remember);
+    storage.setItem(TOKEN_KEY, result.accessToken);
+    storage.setItem(USER_KEY, JSON.stringify(result.user));
+    // 清理反向存储，避免旧 token 残留
+    const other = remember ? sessionStorage : localStorage;
+    other.removeItem(TOKEN_KEY);
+    other.removeItem(USER_KEY);
+    localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0');
     setToken(result.accessToken);
     setUser(result.user);
     const flag = !!result.mustChangePassword;
@@ -62,9 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('auth-user');
-    localStorage.removeItem(MCP_FLAG_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+    localStorage.removeItem(REMEMBER_KEY);
     setToken(null);
     setUser(null);
     setMustChangePassword(false);

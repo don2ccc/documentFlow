@@ -4,21 +4,21 @@ import {
   AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined,
   ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined,
   SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined,
-  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined
+  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 import { StorageIndicator } from "./StorageIndicator";
 
 const SIDEBAR_CSS = `
 .app-sider {
-  background: #202b3d !important;
+  background: #141e2f !important;
 }
 .app-sider .app-sidebar-header {
-  margin: 14px 14px 10px;
-  padding: 14px 14px 12px;
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 12px;
+  margin: 14px 10px 10px;
+  padding: 14px 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   color: #ffffff;
   letter-spacing: 0.3px;
 }
@@ -72,7 +72,7 @@ const SIDEBAR_CSS = `
 .app-sider .app-sidebar-subtitle {
   margin-top: 8px;
   font-size: 11px;
-  color: #9ca8ba;
+  color: #8e9aae;
   padding-left: 44px;
   letter-spacing: 0.4px;
 }
@@ -82,21 +82,25 @@ const SIDEBAR_CSS = `
 }
 .app-sider .ant-menu-dark .ant-menu-item,
 .app-sider .ant-menu-dark .ant-menu-submenu-title {
-  color: #cbd3df !important;
+  color: #c8d1df !important;
   margin: 4px 12px !important;
   width: calc(100% - 24px) !important;
   border-radius: 8px !important;
 }
+.app-sider .ant-menu-dark .ant-menu-item .ant-menu-item-icon,
+.app-sider .ant-menu-dark .ant-menu-submenu-title .ant-menu-item-icon {
+  color: #aeb9c9 !important;
+}
 .app-sider .ant-menu-dark .ant-menu-item:hover,
 .app-sider .ant-menu-dark .ant-menu-submenu-title:hover {
   color: #ffffff !important;
-  background: rgba(255,255,255,0.08) !important;
+  background: #223149 !important;
 }
 .app-sider .ant-menu-dark .ant-menu-item-selected,
 .app-sider .ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title {
-  background: #f47a1f !important;
+  background: #f36b21 !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(255,107,26,0.25);
+  box-shadow: 0 4px 12px rgba(243,107,33,0.25);
 }
 .app-sider .ant-menu-dark .ant-menu-item-selected::after,
 .app-sider .ant-menu-dark .ant-menu-submenu-selected::after {
@@ -113,15 +117,15 @@ const SIDEBAR_CSS = `
   width: calc(100% - 40px) !important;
 }
 .app-sider .ant-menu-dark .ant-menu-sub .ant-menu-item-selected {
-  background: rgba(244,122,31,0.18) !important;
-  color: #ff8c4a !important;
+  background: rgba(243,107,33,0.16) !important;
+  color: #ff9a5d !important;
   box-shadow: none;
 }
 .app-sider .ant-menu-dark .ant-menu-sub .ant-menu-item-selected .ant-menu-item-icon {
-  color: #ff8c4a !important;
+  color: #ff9a5d !important;
 }
 .app-sider .ant-menu-dark .ant-menu-inline > .ant-menu-submenu > .ant-menu-submenu-title .ant-menu-submenu-arrow {
-  color: #9ca8ba;
+  color: #f36b21;
 }
 `;
 
@@ -152,8 +156,9 @@ export function AppLayout() {
     ...(has("user:manage") ? [{ key: "/admin/users", icon: <TeamOutlined />, label: "用户管理" }] : []),
     ...(has("role:manage") || has("user:manage") ? [{ key: "/admin/roles", icon: <SafetyCertificateOutlined />, label: "角色管理" }] : []),
     ...(has("category:manage") ? [{ key: "/admin/categories", icon: <TagsOutlined />, label: "分类管理" }] : []),
-    ...(has("department:manage") ? [{ key: "/admin/departments", icon: <ApartmentOutlined />, label: "部门管理" }] : []),
-    ...(has("workshop:manage") ? [{ key: "/admin/workshops", icon: <ApartmentOutlined />, label: "科室管理" }] : []),
+    // Older admin tokens may not include the newly added permission.
+    ...(has("department:manage") || user?.roles?.includes("sys_admin") ? [{ key: "/admin/departments", icon: <ClusterOutlined />, label: "部门管理" }] : []),
+    ...(has("workshop:manage") || user?.roles?.includes("sys_admin") ? [{ key: "/admin/workshops", icon: <ApartmentOutlined />, label: "科室管理" }] : []),
     ...(has("workflow:manage") ? [{ key: "/admin/workflows", icon: <ApartmentOutlined />, label: "流程配置" }] : []),
     ...(has("audit:view") ? [{ key: "/admin/audit", icon: <AuditOutlined />, label: "审计日志" }] : []),
     ...(has("setting:manage") ? [{ key: "/admin/settings", icon: <SettingOutlined />, label: "邮件设置" }] : []),

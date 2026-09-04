@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ApartmentOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { workshopsApi, WorkshopFlatItem, usersApi, UserItem } from '../../api/endpoints';
+import { workshopsApi, WorkshopFlatItem, usersApi, UserItem, departmentsApi, DepartmentFlatItem } from '../../api/endpoints';
 
-type FormValues = { name: string; parentId?: string | null; managerId?: string | null };
+type FormValues = { name: string; departmentId?: string | null; parentId?: string | null; managerId?: string | null };
 
 interface Row extends WorkshopFlatItem {
   parentName?: string;
   managerName?: string;
+  departmentName?: string;
 }
 
 function errMsg(e: unknown, fallback: string): string {
@@ -19,6 +20,7 @@ function errMsg(e: unknown, fallback: string): string {
 export function WorkshopsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [departments, setDepartments] = useState<DepartmentFlatItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form] = Form.useForm<FormValues>();
@@ -29,14 +31,21 @@ export function WorkshopsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, userList] = await Promise.all([workshopsApi.list(), usersApi.list({ pageSize: 1000 })]);
+      const [list, userList, deptList] = await Promise.all([
+        workshopsApi.list(),
+        usersApi.list({ pageSize: 1000 }),
+        departmentsApi.list()
+      ]);
       const userMap = new Map((userList.items ?? []).map((u) => [u.id, u.name] as const));
       const nameMap = new Map(list.map((w) => [w.id, w.name] as const));
+      const deptMap = new Map(deptList.map((d) => [d.id, d.name] as const));
+      setDepartments(deptList);
       setRows(
         list.map((w) => ({
           ...w,
           parentName: w.parentId ? nameMap.get(w.parentId) ?? '-' : undefined,
-          managerName: w.managerId ? userMap.get(w.managerId) ?? '-' : undefined
+          managerName: w.managerId ? userMap.get(w.managerId) ?? '-' : undefined,
+          departmentName: w.departmentId ? deptMap.get(w.departmentId) ?? '-' : undefined
         }))
       );
     } finally {
@@ -58,7 +67,7 @@ export function WorkshopsPage() {
   const openEdit = (r: Row) => {
     setEditing(r);
     form.resetFields();
-    form.setFieldsValue({ name: r.name, parentId: r.parentId ?? undefined, managerId: r.managerId ?? undefined });
+    form.setFieldsValue({ name: r.name, departmentId: r.departmentId ?? undefined, parentId: r.parentId ?? undefined, managerId: r.managerId ?? undefined });
     setOpen(true);
   };
 
@@ -69,7 +78,7 @@ export function WorkshopsPage() {
     } catch {
       return;
     }
-    const payload = { name: values.name, parentId: values.parentId ?? null, managerId: values.managerId ?? null };
+    const payload = { name: values.name, parentId: values.parentId ?? null, managerId: values.managerId ?? null, departmentId: values.departmentId ?? null };
     setSubmitting(true);
     try {
       if (editing) await workshopsApi.update(editing.id, payload);
@@ -100,6 +109,7 @@ export function WorkshopsPage() {
   const columns: ColumnsType<Row> = useMemo(
     () => [
       { title: '科室名称', dataIndex: 'name', key: 'name' },
+      { title: '所属部门', dataIndex: 'departmentName', key: 'departmentName', render: (v?: string) => v ?? <Tag color="default">未指定</Tag> },
       { title: '上级科室', dataIndex: 'parentName', key: 'parentName', render: (v?: string) => v ?? <Tag color="default">顶级</Tag> },
       { title: '科室负责人', dataIndex: 'managerName', key: 'managerName', render: (v?: string) => v ?? '-' },
       {
@@ -177,6 +187,15 @@ export function WorkshopsPage() {
           <Form form={form} layout="vertical" preserve={false}>
             <Form.Item name="name" label="科室名称" rules={[{ required: true, message: '请输入科室名称' }]}>
               <Input placeholder="例如：研发一科" autoFocus />
+            </Form.Item>
+            <Form.Item name="departmentId" label="所属部门">
+              <Select
+                allowClear
+                placeholder="不选表示暂不归属任何部门"
+                options={departments.map((d) => ({ value: d.id, label: d.name }))}
+                showSearch
+                optionFilterProp="label"
+              />
             </Form.Item>
             <Form.Item name="parentId" label="上级科室">
               <Select

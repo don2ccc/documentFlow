@@ -15,6 +15,10 @@ export interface DepartmentNode {
 export class DepartmentsService {
   constructor(@InjectRepository(Department) private readonly repo: Repository<Department>) {}
 
+  list() {
+    return this.repo.find({ order: { name: 'ASC' } });
+  }
+
   async tree(): Promise<DepartmentNode[]> {
     const all = await this.repo.find({ order: { name: 'ASC' } });
     const map = new Map<string, DepartmentNode>();
@@ -29,6 +33,9 @@ export class DepartmentsService {
   }
 
   async create(dto: CreateDepartmentDto) {
+    if (await this.repo.findOneBy({ name: dto.name })) {
+      throw new ConflictException('部门名称已存在');
+    }
     return this.repo.save(
       this.repo.create({ name: dto.name, parentId: dto.parentId ?? null, managerId: dto.managerId ?? null })
     );
@@ -48,9 +55,13 @@ export class DepartmentsService {
     const children = await this.repo.countBy({ parentId: id });
     if (children > 0) throw new ConflictException('请先删除子部门');
     const users = await this.countUsersByDepartment(id);
-    if (users > 0) throw new ConflictException('该部门下仍有用户，无法删除');
-    await this.repo.delete(id);
-    return { ok: true };
+    return this.repo.manager.transaction(async (manager) => {
+      if (users > 0) {
+        await manager.query('UPDATE users SET "departmentId" = NULL WHERE "departmentId" = $1', [id]);
+      }
+      await manager.delete(Department, id);
+      return { ok: true, unlinkedUsers: users };
+    });
   }
 
   private async countUsersByDepartment(id: string): Promise<number> {

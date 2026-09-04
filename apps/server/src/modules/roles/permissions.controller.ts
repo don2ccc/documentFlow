@@ -7,7 +7,7 @@ export class PermissionsController {
   constructor(private readonly roles: RolesService) {}
 
   @Get()
-  @RequirePermission('user:manage', 'role:manage', 'workflow:manage')
+  @RequirePermission('user:manage', 'role:manage', 'workflow:manage', 'department:manage')
   findAll() {
     return this.roles.findAllPermissions();
   }

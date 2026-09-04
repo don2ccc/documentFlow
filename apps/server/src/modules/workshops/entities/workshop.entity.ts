@@ -6,5 +6,6 @@ export class Workshop {
   @Column() name!: string;
   @Column({ type: 'uuid', nullable: true }) parentId!: string | null;
   @Column({ type: 'uuid', nullable: true }) managerId!: string | null;
+  @Column({ type: 'uuid', nullable: true }) departmentId!: string | null;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
 }

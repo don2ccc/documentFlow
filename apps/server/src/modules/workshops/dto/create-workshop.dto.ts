@@ -4,4 +4,5 @@ export class CreateWorkshopDto {
   @IsString() @IsNotEmpty() name!: string;
   @IsOptional() @IsUUID() parentId?: string;
   @IsOptional() @IsUUID() managerId?: string;
+  @IsOptional() @IsUUID() departmentId?: string;
 }

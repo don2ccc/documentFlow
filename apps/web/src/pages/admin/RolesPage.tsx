@@ -9,6 +9,7 @@ interface CategoryDef {
   icon: React.ReactNode;
 }
 
+// permission categories for the roles page
 const CATEGORIES: CategoryDef[] = [
   { key: "workflow", label: "WorkFlow管理", icon: <ApartmentOutlined /> },
   { key: "admin", label: "行政管理", icon: <BankOutlined /> },
@@ -184,3 +185,4 @@ export function RolesPage() {
     </Card>
   );
 }
+// build: invalidate cached bundle
