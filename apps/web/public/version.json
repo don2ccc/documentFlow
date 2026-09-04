@@ -1,7 +1,7 @@
 {
-  "version": "v0.0.1",
-  "commit": "0c0912c",
+  "version": "v1.0.0",
+  "commit": "c573189",
   "branch": "feature-billy",
-  "builtAt": "2026-09-04T13:58:39.919Z",
-  "subject": "feat: workshop-department binding + recent admin updates"
+  "builtAt": "2026-09-04T13:59:26.488858Z",
+  "subject": "chore(release): v0.0.1"
 }
