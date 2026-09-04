@@ -14,7 +14,7 @@ echo "[release] Building web..."
 (cd apps/web && npm run build)
 
 echo "[release] Restarting PM2..."
-pm2 restart documentflow-api --update-env >/dev/null
+su -s /bin/bash documentflow -c "pm2 restart documentflow-api --update-env >/dev/null"
 
 echo
 echo "[release] Done. Latest tag:"

@@ -40,7 +40,7 @@ echo "Rebuilding web..."
 (cd apps/web && npm run build)
 
 echo "Restarting PM2 processes..."
-pm2 restart documentflow-api --update-env >/dev/null
+su -s /bin/bash documentflow -c "pm2 restart documentflow-api --update-env >/dev/null"
 
 echo
 echo "Rolled back to $TARGET"
