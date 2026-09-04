@@ -239,6 +239,7 @@ export function AppLayout() {
           onClick={(e) => navigate(e.key)}
         />
         </div>
+        <StorageIndicator />
         {appVersion ? (
           <div style={{ margin: "6px 16px 4px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,0.55)", letterSpacing: 0.3 }}>
             <span>版本</span>
@@ -248,7 +249,6 @@ export function AppLayout() {
             </span>
           </div>
         ) : null}
-        <StorageIndicator />
       </Sider>
       <Layout>
         <Header style={{ background: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", paddingInline: 24, boxShadow: "0 1px 4px rgba(15, 23, 42, 0.06)" }}>
