@@ -99,6 +99,20 @@ const LOGIN_PAGE_CSS = `
   text-decoration: none;
 }
 .login-links a:hover { text-decoration: underline; }
+.login-version {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.3px;
+}
+.login-version .lv-value { color: #475569; font-weight: 500; }
+.login-version .lv-commit { opacity: 0.55; margin-left: 4px; }
 .login-footer {
   text-align: center;
   padding: 16px 16px 24px;
@@ -127,6 +141,22 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [remember, setRemember] = useState(true);
+
+  const [appVersion, setAppVersion] = useState<{ version: string; commit?: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/version.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data && data.version) {
+          setAppVersion({ version: data.version, commit: data.commit });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 找回密码
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -311,6 +341,16 @@ export function LoginPage() {
                 <a onClick={openRegister}>注册账号</a>
                 <a onClick={openForgot}>忘记密码？</a>
               </div>
+
+              {appVersion ? (
+                <div className="login-version" aria-label="build version">
+                  <span>当前版本</span>
+                  <span>
+                    <span className="lv-value">{appVersion.version}</span>
+                    {appVersion.commit ? <span className="lv-commit">· {appVersion.commit.slice(0, 7)}</span> : null}
+                  </span>
+                </div>
+              ) : null}
             </Form>
           </div>
         </div>
