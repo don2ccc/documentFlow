@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.1",
-  "commit": "a5a322c",
+  "version": "v1.0.2",
+  "commit": "027cd99",
   "branch": "feature-billy",
-  "builtAt": "2026-09-04T14:12:34.104Z",
-  "subject": "feat: version display + one-click rollback"
+  "builtAt": "2026-09-04T14:17:21.431Z",
+  "subject": "fix(rollback): restart PM2 as documentflow user"
 }
