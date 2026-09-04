@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.0",
-  "commit": "c573189",
+  "version": "v1.0.1",
+  "commit": "a5a322c",
   "branch": "feature-billy",
-  "builtAt": "2026-09-04T13:59:26.488858Z",
-  "subject": "chore(release): v0.0.1"
+  "builtAt": "2026-09-04T14:12:34.104Z",
+  "subject": "feat: version display + one-click rollback"
 }
