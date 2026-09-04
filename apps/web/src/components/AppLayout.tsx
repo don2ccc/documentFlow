@@ -129,33 +129,6 @@ const SIDEBAR_CSS = `
 .app-sider .ant-menu-dark .ant-menu-inline > .ant-menu-submenu > .ant-menu-submenu-title .ant-menu-submenu-arrow {
   color: #f36b21;
 }
-.app-header-version {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-right: 18px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #f5f7fb;
-  border: 1px solid #e6ebf2;
-  font-size: 12px;
-  color: #475569;
-  letter-spacing: 0.2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.app-header-version .ahv-label {
-  color: #94a3b8;
-  font-weight: 500;
-}
-.app-header-version .ahv-value {
-  color: #0f172a;
-  font-weight: 600;
-}
-.app-header-version .ahv-commit {
-  color: #94a3b8;
-  font-size: 11px;
-  opacity: 0.85;
-}
 `;
 
 const { Sider, Header, Content } = Layout;
@@ -266,6 +239,15 @@ export function AppLayout() {
           onClick={(e) => navigate(e.key)}
         />
         </div>
+        {appVersion ? (
+          <div style={{ margin: "6px 16px 4px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,0.55)", letterSpacing: 0.3 }}>
+            <span>版本</span>
+            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "rgba(255,255,255,0.85)" }}>
+              {appVersion.version}
+              {appVersion.commit ? <span style={{ opacity: 0.5 }}> · {appVersion.commit}</span> : null}
+            </span>
+          </div>
+        ) : null}
         <StorageIndicator />
       </Sider>
       <Layout>
@@ -283,13 +265,6 @@ export function AppLayout() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
-            {appVersion ? (
-              <div className="app-header-version" aria-label="build version">
-                <span className="ahv-label">版本</span>
-                <span className="ahv-value">{appVersion.version}</span>
-                {appVersion.commit ? <span className="ahv-commit">· {appVersion.commit.slice(0, 7)}</span> : null}
-              </div>
-            ) : null}
             <Badge dot style={{ marginRight: 16 }}>
               <BellOutlined style={{ fontSize: 18, cursor: "pointer" }} onClick={() => navigate("/notifications")} />
             </Badge>
