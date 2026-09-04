@@ -1,15 +1,132 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Form, Input, Modal, Steps, Typography, message } from 'antd';
+import { Alert, Button, Checkbox, Form, Input, Modal, Steps, message } from 'antd';
+import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { authApi } from '../api/endpoints';
 
 const COUNTDOWN_SEC = 60;
 
+const LOGIN_PAGE_CSS = `
+.login-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  background-image: radial-gradient(circle, #e6e8eb 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+  overflow: auto;
+}
+.login-page::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #ff6b1a, #ff8c4a);
+  z-index: 1;
+}
+.login-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px 24px;
+}
+.login-card {
+  width: 380px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 36px 36px 28px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.login-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.login-logo-img {
+  height: 64px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+.login-title {
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+  color: #1f2937;
+  margin: 8px 0 4px;
+}
+.login-subtitle {
+  font-size: 12px;
+  text-align: center;
+  color: #6b7280;
+  margin: 0 0 24px;
+}
+.login-form .ant-form-item { margin-bottom: 14px; }
+.login-form .ant-input-affix-wrapper { padding: 8px 12px; border-radius: 6px; }
+.login-remember {
+  margin: 4px 0 16px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.login-btn.ant-btn-primary,
+.login-btn.ant-btn-primary:hover,
+.login-btn.ant-btn-primary:focus {
+  background: #ff6b1a;
+  border-color: #ff6b1a;
+  box-shadow: none;
+}
+.login-btn.ant-btn-primary:active {
+  background: #e85f15;
+  border-color: #e85f15;
+}
+.login-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.login-links a {
+  color: #ff6b1a;
+  cursor: pointer;
+  text-decoration: none;
+}
+.login-links a:hover { text-decoration: underline; }
+.login-footer {
+  text-align: center;
+  padding: 16px 16px 24px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+.login-footer .status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.login-footer .divider { margin: 0 6px; color: #cbd5e1; }
+@media (max-width: 480px) {
+  .login-card { padding: 28px 22px 22px; }
+  .login-content { padding-top: 36px; }
+}
+`;
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   // 找回密码
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -52,7 +169,7 @@ export function LoginPage() {
       setCountdown(COUNTDOWN_SEC);
       message.success('验证码已发送，请查收邮箱（10 分钟内有效）');
     } catch (e: any) {
-      if (e?.errorFields) return; // 表单校验失败
+      if (e?.errorFields) return;
       message.error(e?.response?.data?.message || '发送失败，请稍后再试');
     } finally {
       setSendingCode(false);
@@ -120,7 +237,7 @@ export function LoginPage() {
         email: values.email.trim(),
         employeeNo: values.employeeNo?.trim() || undefined,
         directSupervisor: values.directSupervisor?.trim() || undefined,
-        productionLine: values.productionLine?.trim() || undefined,
+        workshopId: values.workshopId ?? undefined,
         position: values.position?.trim() || undefined
       });
       message.success('注册申请已提交，请等待系统管理员审批');
@@ -137,7 +254,7 @@ export function LoginPage() {
 
   const onFinish = async (values: { username: string; password: string }) => {
     try {
-      const result = await login(values.username, values.password);
+      const result = await login(values.username, values.password, remember);
       if (result.mustChangePassword) {
         navigate('/change-password', { replace: true });
       } else {
@@ -151,25 +268,61 @@ export function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
-      <Card style={{ width: 380 }}>
-        <Typography.Title level={3} style={{ textAlign: 'center' }}>SPO 办公系统</Typography.Title>
-        <Form onFinish={onFinish} layout="vertical">
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input placeholder="用户名" size="large" autoComplete="username" />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password placeholder="密码" size="large" autoComplete="current-password" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" size="large" block loading={submitting}>登录</Button>
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between' }}>
-            <a onClick={openRegister}>注册账号</a>
-            <a onClick={openForgot}>忘记密码？</a>
-          </div>
-        </Form>
-      </Card>
+    <>
+      <style>{LOGIN_PAGE_CSS}</style>
+      <div className="login-page">
+        <div className="login-content">
+          <div className="login-card">
+            <div className="login-logo">
+              <img src="/yageo-logo.png" alt="YAGEO" className="login-logo-img" />
+            </div>
+            <h1 className="login-title">SPO 办公系统 登陆</h1>
+            <p className="login-subtitle">企业级统一安全办公门户</p>
 
-      {/* 注册弹窗 */}
+            <Form onFinish={onFinish} layout="vertical" className="login-form" requiredMark={false}>
+              <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+                <Input
+                  prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="用户名 / 员工工号"
+                  size="large"
+                  autoComplete="username"
+                />
+              </Form.Item>
+              <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
+                <Input.Password
+                  prefix={<LockOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="密码"
+                  size="large"
+                  autoComplete="current-password"
+                />
+              </Form.Item>
+
+              <div className="login-remember">
+                <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)}>
+                  记住登录状态
+                </Checkbox>
+              </div>
+
+              <Button type="primary" htmlType="submit" size="large" block loading={submitting} className="login-btn">
+                登录
+              </Button>
+
+              <div className="login-links">
+                <a onClick={openRegister}>注册账号</a>
+                <a onClick={openForgot}>忘记密码？</a>
+              </div>
+            </Form>
+          </div>
+        </div>
+
+        <div className="login-footer">
+          <div>© 2025 YAGEO Group · SPO Enterprise Cloud</div>
+          <div>
+            <span className="status-dot" /> 系统运行正常 <span className="divider">|</span> 推荐使用 Chrome / Edge 访问
+          </div>
+        </div>
+      </div>
+
       <Modal
         title="注册新账号"
         open={registerOpen}
@@ -249,7 +402,6 @@ export function LoginPage() {
         </Form>
       </Modal>
 
-      {/* 找回密码弹窗 */}
       <Modal
         title="找回密码"
         open={forgotOpen}
@@ -362,6 +514,6 @@ export function LoginPage() {
           )}
         </Form>
       </Modal>
-    </div>
+    </>
   );
 }

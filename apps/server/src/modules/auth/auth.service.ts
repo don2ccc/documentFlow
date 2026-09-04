@@ -75,7 +75,7 @@ export class AuthService {
       email,
       employeeNo: dto.employeeNo ?? null,
       directSupervisor: dto.directSupervisor ?? null,
-      productionLine: dto.productionLine ?? null,
+      workshopId: dto.workshopId ?? null,
       position: dto.position ?? null,
       status: UserStatus.Pending,
       mustChangePassword: false,

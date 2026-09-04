@@ -34,7 +34,7 @@ export const authApi = {
   resetPassword: (email: string, code: string, newPassword: string) =>
     api.post<{ ok: boolean }>('/auth/reset-password', { email, code, newPassword }).then((r) => r.data),
   // 新用户注册（公开）
-  register: (data: { username: string; password: string; name: string; email: string; employeeNo?: string; directSupervisor?: string; productionLine?: string; position?: string }) =>
+  register: (data: { username: string; password: string; name: string; email: string; employeeNo?: string; directSupervisor?: string; workshopId?: string; position?: string }) =>
     api.post<{ ok: boolean }>('/auth/register', data).then((r) => r.data)
 };
 
@@ -92,7 +92,7 @@ export interface RoleItem { id: string; name: string; code: string; description:
 export interface PermissionItem { id: string; name: string; code: string }
 export interface DepartmentNode { id: string; name: string; managerId: string | null; children: DepartmentNode[] }
 export interface AuditLogItem { id: string; actorId: string; action: string; targetType: string; targetId: string | null; detail: Record<string, unknown> | null; ip: string | null; createdAt: string }
-export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[]; roleIds?: string[]; email?: string | null; directSupervisor?: string | null; productionLine?: string | null; position?: string | null; employeeNo?: string | null; status?: string }
+export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[]; roleIds?: string[]; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; employeeNo?: string | null; status?: string }
 
 export const rolesApi = {
   list: () => api.get<RoleItem[]>('/roles').then((r) => r.data),
@@ -102,10 +102,42 @@ export const rolesApi = {
   remove: (id: string) => api.delete(`/roles/${id}`).then((r) => r.data)
 };
 
+export interface DepartmentFlatItem {
+  id: string;
+  name: string;
+  parentId: string | null;
+  managerId: string | null;
+  createdAt: string;
+}
+
 export const departmentsApi = {
   tree: () => api.get<DepartmentNode[]>('/departments/tree').then((r) => r.data),
-  create: (data: { name: string; parentId?: string }) => api.post('/departments', data).then((r) => r.data)
+  list: () => api.get<DepartmentFlatItem[]>('/departments').then((r) => r.data),
+  create: (data: { name: string; parentId?: string | null; managerId?: string | null }) =>
+    api.post('/departments', data).then((r) => r.data),
+  update: (id: string, data: { name?: string; parentId?: string | null; managerId?: string | null }) =>
+    api.patch(`/departments/${id}`, data).then((r) => r.data),
+  remove: (id: string) => api.delete(`/departments/${id}`).then((r) => r.data)
 };
+export interface WorkshopFlatItem {
+  id: string;
+  name: string;
+  parentId: string | null;
+  managerId: string | null;
+  createdAt: string;
+}
+
+export const workshopsApi = {
+  tree: () => api.get<DepartmentNode[]>('/workshops/tree').then((r) => r.data),
+  list: () => api.get<WorkshopFlatItem[]>('/workshops').then((r) => r.data),
+  create: (data: { name: string; parentId?: string | null; managerId?: string | null }) =>
+    api.post('/workshops', data).then((r) => r.data),
+  update: (id: string, data: { name?: string; parentId?: string | null; managerId?: string | null }) =>
+    api.patch(`/workshops/${id}`, data).then((r) => r.data),
+  remove: (id: string) => api.delete(`/workshops/${id}`).then((r) => r.data)
+};
+
+
 
 export const usersApi = {
   list: (params: Record<string, unknown> = {}) => api.get<Paged<UserItem>>('/users', { params }).then((r) => r.data),
@@ -118,7 +150,7 @@ export const usersApi = {
   approve: (id: string) => api.post<{ user: UserItem; initialPassword: string; emailSent: boolean }>(`/users/${id}/approve`).then((r) => r.data),
   // 当前登录用户自助接口
   getMe: () => api.get<UserItem>('/users/me').then((r) => r.data),
-  updateMe: (data: { employeeNo?: string | null; email?: string | null; directSupervisor?: string | null; productionLine?: string | null; position?: string | null; departmentId?: string | null }) =>
+  updateMe: (data: { employeeNo?: string | null; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; departmentId?: string | null }) =>
     api.put<UserItem>('/users/me', data).then((r) => r.data),
   changeMyPassword: (newPassword: string) =>
     api.post<{ ok: boolean }>('/users/me/change-password', { newPassword }).then((r) => r.data)
@@ -319,3 +351,15 @@ export function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 }
 
+
+export interface StorageInfo {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  usagePercent: number;
+  path: string;
+}
+
+export const systemMonitorApi = {
+  storage: () => api.get<StorageInfo>(`/system-monitor/storage`).then((r) => r.data)
+};

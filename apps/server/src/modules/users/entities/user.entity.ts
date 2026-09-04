@@ -11,7 +11,7 @@ export class User {
   @Column({ type: 'varchar', nullable: true }) employeeNo!: string | null;
   @Column({ type: 'varchar', nullable: true }) email!: string | null;
   @Column({ type: 'varchar', nullable: true }) directSupervisor!: string | null;
-  @Column({ type: 'varchar', nullable: true }) productionLine!: string | null;
+  @Column({ type: 'uuid', nullable: true }) workshopId!: string | null;
   @Column({ type: 'varchar', nullable: true }) position!: string | null;
   @Column({ type: 'uuid', nullable: true }) departmentId!: string | null;
   @Column({ type: 'varchar', default: UserStatus.Pending }) status!: UserStatus;

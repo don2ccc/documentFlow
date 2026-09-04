@@ -1,8 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, TreeSelect, message } from 'antd';
-import { auditApi, departmentsApi, rolesApi, usersApi, UserItem } from '../../api/endpoints';
+import { auditApi, departmentsApi, rolesApi, usersApi, workshopsApi, UserItem } from '../../api/endpoints';
 import { StatusTag } from '../../components/StatusTag';
 
+function collectWorkshopNames(nodes: any[], out: { id: string; name: string }[] = []): { id: string; name: string }[] {
+  for (const n of nodes ?? []) {
+    out.push({ id: n.id, name: n.name });
+    if (n.children?.length) collectWorkshopNames(n.children, out);
+  }
+  return out;
+}
+function findWorkshopName(nodes: any[], id: string | null | undefined): string {
+  if (!id) return '-';
+  for (const n of nodes ?? []) {
+    if (n.id === id) return n.name;
+    const found = findWorkshopName(n.children, id);
+    if (found !== '-') return found;
+  }
+  return '-';
+}
 const STATUS_OPTIONS = [
   { value: '', label: '全部状态' },
   { value: 'pending', label: '待激活' },
@@ -14,6 +30,7 @@ export function UsersPage() {
   const [data, setData] = useState<any>({ items: [], total: 0 });
   const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
   const [depts, setDepts] = useState<any[]>([]);
+  const [workshops, setWorkshops] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [resetTarget, setResetTarget] = useState<UserItem | null>(null);
@@ -37,9 +54,13 @@ export function UsersPage() {
     setData(list);
     setRoles(roleList);
     setDepts(tree);
+    const wsTree = await workshopsApi.tree();
+    setWorkshops(wsTree);
   }, [statusFilter, keyword]);
 
   useEffect(() => { load(); }, [load]);
+  const workshopNameOf = (id: string | null | undefined, _r: UserItem) => findWorkshopName(workshops, id);
+
 
   const create = async () => {
     const values = await form.validateFields();
@@ -68,7 +89,7 @@ export function UsersPage() {
       employeeNo: u.employeeNo ?? '',
       email: u.email ?? '',
       directSupervisor: u.directSupervisor ?? '',
-      productionLine: u.productionLine ?? '',
+      workshopId: u.workshopId ?? undefined,
       position: u.position ?? '',
       departmentId: u.departmentId ?? undefined,
       roleIds: u.roleIds ?? []
@@ -121,7 +142,7 @@ export function UsersPage() {
     { title: '用户名', dataIndex: 'username' },
     { title: '邮箱', dataIndex: 'email' },
     { title: '直属领导', dataIndex: 'directSupervisor' },
-    { title: '生产线', dataIndex: 'productionLine' },
+    { title: '科室', dataIndex: 'workshopId', render: (v: string, r: UserItem) => workshopNameOf(v, r) },
     { title: '职位', dataIndex: 'position' },
     { title: '角色', dataIndex: 'roles', render: (v: string[]) => v.map((r) => <span key={r}>{r}</span>) },
     { title: '状态', dataIndex: 'status', render: (v: string) => <StatusTag status={v} /> },
@@ -181,7 +202,7 @@ export function UsersPage() {
           <Form.Item name="employeeNo" label="工号"><Input /></Form.Item>
           <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入合法邮箱' }]}><Input /></Form.Item>
           <Form.Item name="directSupervisor" label="直属领导"><Input /></Form.Item>
-          <Form.Item name="productionLine" label="生产线"><Input /></Form.Item>
+          <Form.Item name="workshopId" label="科室"><TreeSelect treeData={workshops} fieldNames={{ label: 'name', value: 'id' }} allowClear /></Form.Item>
           <Form.Item name="position" label="职位信息"><Input /></Form.Item>
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />
@@ -199,7 +220,7 @@ export function UsersPage() {
           <Form.Item name="employeeNo" label="工号"><Input /></Form.Item>
           <Form.Item name="email" label="邮箱"><Input /></Form.Item>
           <Form.Item name="directSupervisor" label="直属领导"><Input /></Form.Item>
-          <Form.Item name="productionLine" label="生产线"><Input /></Form.Item>
+          <Form.Item name="workshopId" label="科室"><TreeSelect treeData={workshops} fieldNames={{ label: 'name', value: 'id' }} allowClear /></Form.Item>
           <Form.Item name="position" label="职位信息"><Input /></Form.Item>
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />

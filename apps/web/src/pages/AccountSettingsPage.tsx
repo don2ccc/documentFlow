@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, TreeSelect, message } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
-import { departmentsApi, usersApi, UserItem } from '../api/endpoints';
+import { departmentsApi, usersApi, workshopsApi, UserItem } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
 
 interface ProfileFormValues {
   employeeNo?: string;
   email?: string;
   directSupervisor?: string;
-  productionLine?: string;
+  workshopId?: string;
   position?: string;
   departmentId?: string;
 }
@@ -22,20 +22,22 @@ export function AccountSettingsPage() {
   const { user, logout } = useAuth();
   const [profile, setProfile] = useState<UserItem | null>(null);
   const [depts, setDepts] = useState<any[]>([]);
+  const [workshops, setWorkshops] = useState<any[]>([]);
   const [profileForm] = Form.useForm<ProfileFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
   const load = useCallback(async () => {
-    const [me, tree] = await Promise.all([usersApi.getMe(), departmentsApi.tree()]);
+    const [me, tree, wsTree] = await Promise.all([usersApi.getMe(), departmentsApi.tree(), workshopsApi.tree()]);
     setProfile(me);
     setDepts(tree);
+    setWorkshops(wsTree);
     profileForm.setFieldsValue({
       employeeNo: me.employeeNo ?? '',
       email: me.email ?? '',
       directSupervisor: me.directSupervisor ?? '',
-      productionLine: me.productionLine ?? '',
+      workshopId: me.workshopId ?? undefined,
       position: me.position ?? '',
       departmentId: me.departmentId ?? undefined
     });
@@ -53,7 +55,7 @@ export function AccountSettingsPage() {
         employeeNo: values.employeeNo?.trim() ?? null,
         email: values.email?.trim() ?? null,
         directSupervisor: values.directSupervisor?.trim() ?? null,
-        productionLine: values.productionLine?.trim() ?? null,
+        workshopId: values.workshopId ?? null,
         position: values.position?.trim() ?? null,
         departmentId: values.departmentId ?? null
       });
@@ -113,8 +115,13 @@ export function AccountSettingsPage() {
           <Form.Item name="directSupervisor" label="直属领导">
             <Input placeholder="请输入直属领导姓名" allowClear />
           </Form.Item>
-          <Form.Item name="productionLine" label="生产线">
-            <Input placeholder="请输入生产线" allowClear />
+          <Form.Item name="workshopId" label="科室">
+            <TreeSelect
+              treeData={workshops}
+              fieldNames={{ label: 'name', value: 'id' }}
+              allowClear
+              placeholder="请选择所属科室"
+            />
           </Form.Item>
           <Form.Item name="position" label="职位信息">
             <Input placeholder="请输入职位信息" allowClear />

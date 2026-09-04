@@ -7,6 +7,123 @@ import {
   ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
+import { StorageIndicator } from "./StorageIndicator";
+
+const SIDEBAR_CSS = `
+.app-sider {
+  background: #202b3d !important;
+}
+.app-sider .app-sidebar-header {
+  margin: 14px 14px 10px;
+  padding: 14px 14px 12px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+}
+.app-sider .app-sidebar-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-sider .app-sidebar-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+}
+.app-sider .app-sidebar-logo img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  display: block;
+}
+.app-sider .app-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  flex: 1;
+  min-width: 0;
+}
+.app-sider .app-sidebar-title-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-sider .app-sidebar-pro-badge {
+  background: linear-gradient(90deg, #ff6b1a 0%, #ff8c4a 100%);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+.app-sider .app-sidebar-subtitle {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #9ca8ba;
+  padding-left: 44px;
+  letter-spacing: 0.4px;
+}
+.app-sider .ant-menu-dark,
+.app-sider .ant-menu-dark .ant-menu {
+  background: transparent !important;
+}
+.app-sider .ant-menu-dark .ant-menu-item,
+.app-sider .ant-menu-dark .ant-menu-submenu-title {
+  color: #cbd3df !important;
+  margin: 4px 12px !important;
+  width: calc(100% - 24px) !important;
+  border-radius: 8px !important;
+}
+.app-sider .ant-menu-dark .ant-menu-item:hover,
+.app-sider .ant-menu-dark .ant-menu-submenu-title:hover {
+  color: #ffffff !important;
+  background: rgba(255,255,255,0.08) !important;
+}
+.app-sider .ant-menu-dark .ant-menu-item-selected,
+.app-sider .ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  background: #f47a1f !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(255,107,26,0.25);
+}
+.app-sider .ant-menu-dark .ant-menu-item-selected::after,
+.app-sider .ant-menu-dark .ant-menu-submenu-selected::after {
+  display: none !important;
+}
+.app-sider .ant-menu-dark .ant-menu-item-selected .ant-menu-item-icon,
+.app-sider .ant-menu-dark .ant-menu-item-selected .anticon,
+.app-sider .ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-item-icon,
+.app-sider .ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title .anticon {
+  color: #ffffff !important;
+}
+.app-sider .ant-menu-dark .ant-menu-sub .ant-menu-item {
+  margin: 2px 12px 2px 28px !important;
+  width: calc(100% - 40px) !important;
+}
+.app-sider .ant-menu-dark .ant-menu-sub .ant-menu-item-selected {
+  background: rgba(244,122,31,0.18) !important;
+  color: #ff8c4a !important;
+  box-shadow: none;
+}
+.app-sider .ant-menu-dark .ant-menu-sub .ant-menu-item-selected .ant-menu-item-icon {
+  color: #ff8c4a !important;
+}
+.app-sider .ant-menu-dark .ant-menu-inline > .ant-menu-submenu > .ant-menu-submenu-title .ant-menu-submenu-arrow {
+  color: #9ca8ba;
+}
+`;
 
 const { Sider, Header, Content } = Layout;
 
@@ -35,6 +152,8 @@ export function AppLayout() {
     ...(has("user:manage") ? [{ key: "/admin/users", icon: <TeamOutlined />, label: "用户管理" }] : []),
     ...(has("role:manage") || has("user:manage") ? [{ key: "/admin/roles", icon: <SafetyCertificateOutlined />, label: "角色管理" }] : []),
     ...(has("category:manage") ? [{ key: "/admin/categories", icon: <TagsOutlined />, label: "分类管理" }] : []),
+    ...(has("department:manage") ? [{ key: "/admin/departments", icon: <ApartmentOutlined />, label: "部门管理" }] : []),
+    ...(has("workshop:manage") ? [{ key: "/admin/workshops", icon: <ApartmentOutlined />, label: "科室管理" }] : []),
     ...(has("workflow:manage") ? [{ key: "/admin/workflows", icon: <ApartmentOutlined />, label: "流程配置" }] : []),
     ...(has("audit:view") ? [{ key: "/admin/audit", icon: <AuditOutlined />, label: "审计日志" }] : []),
     ...(has("setting:manage") ? [{ key: "/admin/settings", icon: <SettingOutlined />, label: "邮件设置" }] : []),
@@ -67,9 +186,9 @@ export function AppLayout() {
     },
     {
       key: KEY_HR,
-      icon: <IdcardOutlined />,
+      icon: <TeamOutlined />,
       label: "HR管理",
-      children: [{ key: "/hr", icon: <IdcardOutlined />, label: "（正在开发中）" }]
+      children: [{ key: "/hr", icon: <TeamOutlined />, label: "（正在开发中）" }]
     }
   ];
 
@@ -83,9 +202,23 @@ export function AppLayout() {
   }
 
   return (
+    <>
+      <style>{SIDEBAR_CSS}</style>
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider theme="dark" width={220}>
-        <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, padding: 16, textAlign: "center" }}>SPO 办公系统</div>
+      <Sider theme="dark" width={220} className="app-sider" style={{ display: "flex", flexDirection: "column" }}>
+        <div className="app-sidebar-header">
+          <div className="app-sidebar-header-row">
+            <div className="app-sidebar-logo">
+              <img src="/yageo-logo.png" alt="YAGEO" />
+            </div>
+            <div className="app-sidebar-title">
+              <span className="app-sidebar-title-text">SPO 办公系统</span>
+              <span className="app-sidebar-pro-badge">PRO</span>
+            </div>
+          </div>
+          <div className="app-sidebar-subtitle">企业协同中枢平台</div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <Menu
           theme="dark"
           mode="inline"
@@ -93,28 +226,45 @@ export function AppLayout() {
           items={items}
           onClick={(e) => navigate(e.key)}
         />
+        </div>
+        <StorageIndicator />
       </Sider>
       <Layout>
-        <Header style={{ background: "#fff", display: "flex", justifyContent: "flex-end", alignItems: "center", paddingInline: 24 }}>
-          <Badge dot style={{ marginRight: 16 }}>
-            <BellOutlined style={{ fontSize: 18, cursor: "pointer" }} onClick={() => navigate("/notifications")} />
-          </Badge>
-          <Dropdown
-            menu={{
-              items: [
-                { key: "account-settings", icon: <SettingOutlined />, label: "帐号设置", onClick: () => navigate("/account-settings") },
-                { type: "divider" },
-                { key: "logout", icon: <LogoutOutlined />, label: "退出登录", onClick: () => { logout(); navigate("/login"); } }
-              ]
-            }}
-          >
-            <span style={{ cursor: "pointer" }}><UserOutlined /> {user?.name ?? "用户"}</span>
-          </Dropdown>
+        <Header style={{ background: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", paddingInline: 24, boxShadow: "0 1px 4px rgba(15, 23, 42, 0.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)", border: "1px solid rgba(15, 23, 42, 0.06)" }}>
+              <img src="/yageo-logo.png" alt="YAGEO" style={{ width: 32, height: 32, objectFit: "contain" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", letterSpacing: 0.2 }}>SPO 办公系统</span>
+                <span style={{ background: "linear-gradient(90deg, #ff6b1a 0%, #ff8c4a 100%)", color: "#ffffff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 5, letterSpacing: 0.4 }}>PRO</span>
+              </div>
+              <span style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.55)", marginTop: 2 }}>企业协同中枢平台</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <Badge dot style={{ marginRight: 16 }}>
+              <BellOutlined style={{ fontSize: 18, cursor: "pointer" }} onClick={() => navigate("/notifications")} />
+            </Badge>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "account-settings", icon: <SettingOutlined />, label: "帐号设置", onClick: () => navigate("/account-settings") },
+                  { type: "divider" },
+                  { key: "logout", icon: <LogoutOutlined />, label: "退出登录", onClick: () => { logout(); navigate("/login"); } }
+                ]
+              }}
+            >
+              <span style={{ cursor: "pointer" }}><UserOutlined /> {user?.name ?? "用户"}</span>
+            </Dropdown>
+          </div>
         </Header>
         <Content style={{ margin: 24 }}>
           <Outlet />
         </Content>
       </Layout>
     </Layout>
+    </>
   );
 }

@@ -47,7 +47,7 @@ export class UsersService {
       employeeNo: dto.employeeNo ?? null,
       email: dto.email ?? null,
       directSupervisor: dto.directSupervisor ?? null,
-      productionLine: dto.productionLine ?? null,
+      workshopId: dto.workshopId ?? null,
       position: dto.position ?? null,
       departmentId: dto.departmentId ?? null,
       status: UserStatus.Active,
@@ -108,7 +108,7 @@ export class UsersService {
     if (dto.employeeNo !== undefined) user.employeeNo = dto.employeeNo ?? null;
     if (dto.email !== undefined) user.email = dto.email ?? null;
     if (dto.directSupervisor !== undefined) user.directSupervisor = dto.directSupervisor ?? null;
-    if (dto.productionLine !== undefined) user.productionLine = dto.productionLine ?? null;
+    if (dto.workshopId !== undefined) user.workshopId = dto.workshopId ?? null;
     if (dto.position !== undefined) user.position = dto.position ?? null;
     if (dto.departmentId !== undefined) user.departmentId = dto.departmentId ?? null;
     if (dto.roleIds !== undefined) {
@@ -125,7 +125,7 @@ export class UsersService {
     if (dto.employeeNo !== undefined) user.employeeNo = dto.employeeNo ?? null;
     if (dto.email !== undefined) user.email = dto.email ?? null;
     if (dto.directSupervisor !== undefined) user.directSupervisor = dto.directSupervisor ?? null;
-    if (dto.productionLine !== undefined) user.productionLine = dto.productionLine ?? null;
+    if (dto.workshopId !== undefined) user.workshopId = dto.workshopId ?? null;
     if (dto.position !== undefined) user.position = dto.position ?? null;
     if (dto.departmentId !== undefined) user.departmentId = dto.departmentId ?? null;
     const saved = await this.repo.save(user);
@@ -198,6 +198,6 @@ export class UsersService {
   }
 
   private toBrief(u: User): UserBriefDto {
-    return { id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, email: u.email ?? null, directSupervisor: u.directSupervisor ?? null, productionLine: u.productionLine ?? null, position: u.position ?? null, status: u.status, roles: u.roles?.map((r) => r.code) ?? [], roleIds: u.roles?.map((r) => r.id) ?? [] };
+    return { id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, email: u.email ?? null, directSupervisor: u.directSupervisor ?? null, workshopId: u.workshopId ?? null, position: u.position ?? null, status: u.status, roles: u.roles?.map((r) => r.code) ?? [], roleIds: u.roles?.map((r) => r.id) ?? [] };
   }
 }

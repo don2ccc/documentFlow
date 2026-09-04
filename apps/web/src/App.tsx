@@ -11,10 +11,13 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { ApplicationQueryPage } from './pages/ApplicationQueryPage';
 import { ApplicationDetailPage } from './pages/ApplicationDetailPage';
+import { DocumentDetailPage } from './pages/DocumentDetailPage';
 import { AccountSettingsPage } from './pages/AccountSettingsPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { RolesPage } from './pages/admin/RolesPage';
 import { CategoriesPage } from './pages/admin/CategoriesPage';
+import { DepartmentsPage } from './pages/admin/DepartmentsPage';
+import { WorkshopsPage } from './pages/admin/WorkshopsPage';
 import { WorkflowsPage } from './pages/admin/WorkflowsPage';
 import { WorkflowEditPage } from './pages/admin/WorkflowEditPage';
 import { AuditLogsPage } from './pages/admin/AuditLogsPage';
@@ -35,7 +38,7 @@ export function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/documents/:id" element={<ApplicationDetailPage />} />
+                <Route path="/documents/:id" element={<DocumentDetailPage />} />
                 <Route path="/applications" element={<ApplicationsPage />} />
                 <Route path="/applications/query" element={<ApplicationQueryPage />} />
                 <Route path="/applications/:id" element={<ApplicationDetailPage />} />
@@ -45,6 +48,8 @@ export function App() {
                 <Route path="/admin/users" element={<UsersPage />} />
                 <Route path="/admin/roles" element={<RolesPage />} />
                 <Route path="/admin/categories" element={<CategoriesPage />} />
+                <Route path="/admin/departments" element={<DepartmentsPage />} />
+                <Route path="/admin/workshops" element={<WorkshopsPage />} />
                 <Route path="/admin/workflows" element={<WorkflowsPage />} />
                 <Route path="/admin/workflows/:id" element={<WorkflowEditPage />} />
                 <Route path="/admin/audit" element={<AuditLogsPage />} />

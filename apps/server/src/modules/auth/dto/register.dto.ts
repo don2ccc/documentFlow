@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString() @IsNotEmpty({ message: '请输入用户名' })
@@ -18,6 +18,6 @@ export class RegisterDto {
 
   @IsOptional() @IsString() employeeNo?: string;
   @IsOptional() @IsString() directSupervisor?: string;
-  @IsOptional() @IsString() productionLine?: string;
+  @IsOptional() @IsUUID() workshopId?: string;
   @IsOptional() @IsString() position?: string;
 }

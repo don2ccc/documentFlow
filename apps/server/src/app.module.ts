@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { WorkshopsModule } from './modules/workshops/workshops.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
@@ -19,6 +20,7 @@ import { SystemSettingsModule } from './modules/system-settings/system-settings.
 import { DatabaseModule } from './modules/database/database.module';
 import { CoreSettingsModule } from './modules/core-settings/core-settings.module';
 import { DormitoryModule } from './modules/dormitory/dormitory.module';
+import { SystemMonitorModule } from './modules/system-monitor/system-monitor.module';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { DormitoryModule } from './modules/dormitory/dormitory.module';
     UsersModule,
     RolesModule,
     DepartmentsModule,
+    WorkshopsModule,
     CategoriesModule,
     DocumentsModule,
     ApplicationsModule,
@@ -46,7 +49,8 @@ import { DormitoryModule } from './modules/dormitory/dormitory.module';
     SystemSettingsModule,
     DatabaseModule,
     CoreSettingsModule,
-    DormitoryModule
+    DormitoryModule,
+    SystemMonitorModule
   ],
   controllers: [HealthController],
   providers: [
