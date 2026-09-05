@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, TreeSelect, message } from 'antd';
-import { auditApi, departmentsApi, rolesApi, usersApi, workshopsApi, UserItem } from '../../api/endpoints';
+import { auditApi, departmentsApi, factoriesApi, rolesApi, usersApi, workshopsApi, UserItem } from '../../api/endpoints';
 import { StatusTag } from '../../components/StatusTag';
 
 function collectWorkshopNames(nodes: any[], out: { id: string; name: string }[] = []): { id: string; name: string }[] {
@@ -31,6 +31,7 @@ export function UsersPage() {
   const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
   const [depts, setDepts] = useState<any[]>([]);
   const [workshops, setWorkshops] = useState<any[]>([]);
+  const [factories, setFactories] = useState<Array<{ id: string; name: string; code: string }>>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [resetTarget, setResetTarget] = useState<UserItem | null>(null);
@@ -56,10 +57,16 @@ export function UsersPage() {
     setDepts(tree);
     const wsTree = await workshopsApi.tree();
     setWorkshops(wsTree);
+    const facs = await factoriesApi.list();
+    setFactories(facs);
   }, [statusFilter, keyword]);
 
   useEffect(() => { load(); }, [load]);
   const workshopNameOf = (id: string | null | undefined, _r: UserItem) => findWorkshopName(workshops, id);
+  const factoryNameOf = (id: string | null | undefined) => {
+    const f = factories.find((x) => x.id === id);
+    return f ? f.name : "-";
+  };
 
 
   const create = async () => {
@@ -92,6 +99,7 @@ export function UsersPage() {
       workshopId: u.workshopId ?? undefined,
       position: u.position ?? '',
       departmentId: u.departmentId ?? undefined,
+      factoryId: u.factoryId ?? undefined,
       roleIds: u.roleIds ?? []
     });
   };
@@ -143,6 +151,7 @@ export function UsersPage() {
     { title: '邮箱', dataIndex: 'email' },
     { title: '直属领导', dataIndex: 'directSupervisor' },
     { title: '科室', dataIndex: 'workshopId', render: (v: string, r: UserItem) => workshopNameOf(v, r) },
+    { title: '工厂', dataIndex: 'factoryId', render: (v: string | null | undefined) => factoryNameOf(v) },
     { title: '职位', dataIndex: 'position' },
     { title: '角色', dataIndex: 'roles', render: (v: string[]) => v.map((r) => <span key={r}>{r}</span>) },
     { title: '状态', dataIndex: 'status', render: (v: string) => <StatusTag status={v} /> },
@@ -207,6 +216,13 @@ export function UsersPage() {
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />
           </Form.Item>
+          <Form.Item name="factoryId" label="工厂">
+            <Select allowClear placeholder="不选表示不绑定">
+              {factories.map((f) => (
+                <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
           <Form.Item name="roleIds" label="角色">
             <Select mode="multiple" options={roles.map((r) => ({ value: r.id, label: r.name }))} />
           </Form.Item>
@@ -224,6 +240,13 @@ export function UsersPage() {
           <Form.Item name="position" label="职位信息"><Input /></Form.Item>
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />
+          </Form.Item>
+          <Form.Item name="factoryId" label="工厂">
+            <Select allowClear placeholder="不选表示不绑定">
+              {factories.map((f) => (
+                <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item name="roleIds" label="角色">
             <Select mode="multiple" options={roles.map((r) => ({ value: r.id, label: r.name }))} />
