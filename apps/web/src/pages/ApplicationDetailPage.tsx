@@ -25,8 +25,6 @@ export function ApplicationDetailPage() {
   const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const { user, permissions } = useAuth();
-  const location = useLocation();
-  const isDocumentRoute = location.pathname.startsWith('/documents/');
   const [approvalTask, setApprovalTask] = useState<ApprovalTaskAccess | null>(null);
   const [actionMode, setActionMode] = useState<null | 'approve' | 'reject' | 'transfer'>(null);
   const [comment, setComment] = useState('');
@@ -64,12 +62,12 @@ export function ApplicationDetailPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!id || !isDocumentRoute) {
+    if (!id) {
       setApprovalTask(null);
       return;
     }
     approvalsApi.taskForDocument(id).then(setApprovalTask).catch(() => setApprovalTask(null));
-  }, [id, isDocumentRoute]);
+  }, [id]);
 
   const downloadFile = async (fileId: string, fileName: string) => {
     if (!id) return;
@@ -253,7 +251,7 @@ export function ApplicationDetailPage() {
           </Space>
         }
         extra={
-          isDocumentRoute && approvalTask?.canApprove && approvalTask.taskId ? (
+          approvalTask?.canApprove && approvalTask.taskId ? (
             <Space>
               <Button type="primary" onClick={openApprove}>同意</Button>
               <Button danger onClick={openReject}>驳回</Button>

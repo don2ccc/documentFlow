@@ -25,7 +25,7 @@ export function ApprovalsPage() {
   }, [load]);
 
   const columns = [
-    { title: '文档标题', dataIndex: 'title', render: (v: string, r: TodoItem) => <a onClick={() => navigate(`/documents/${r.documentId}`)}>{v}</a> },
+    { title: '文档标题', dataIndex: 'title', render: (v: string, r: TodoItem) => <a onClick={() => navigate(`/applications/${r.documentId}`)}>{v}</a> },
     { title: '当前节点', dataIndex: 'nodeName', width: 140 },
     {
       title: '优先级',
@@ -52,7 +52,7 @@ export function ApprovalsPage() {
       title: '操作',
       width: 100,
       render: (_: unknown, r: TodoItem) => (
-        <Button size="small" type="link" onClick={() => navigate(`/documents/${r.documentId}`)}>处理</Button>
+        <Button size="small" type="link" onClick={() => navigate(`/applications/${r.documentId}`)}>处理</Button>
       )
     }
   ];

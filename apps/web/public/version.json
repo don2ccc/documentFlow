@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.7",
-  "commit": "bb874be",
+  "version": "v1.0.8",
+  "commit": "6f29cbe",
   "branch": "feature-billy",
-  "builtAt": "2026-09-04T15:27:00.681Z",
-  "subject": "chore(release): v1.0.6"
+  "builtAt": "2026-09-05T02:52:06.130Z",
+  "subject": "feat(users): add factory field to user management"
 }
