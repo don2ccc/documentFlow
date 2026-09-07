@@ -662,13 +662,16 @@ export class ApprovalEngineService {
     subject: string,
     baseContent: string
   ): Promise<void> {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const log = (m: string) => console.log(`[sendCompletionEmail] ${m}`);
     try {
       const approverRows = await this.dataSource.query(
         `SELECT DISTINCT "actorId" AS id FROM approval_records WHERE "instanceId" = $1 AND "actorId" IS NOT NULL AND "actorId" <> 'system'`,
         [instance.id]
       );
-      const approverIds = (approverRows as Array<{ id: string }>).map((r) => r.id);
-      const userIds = [...new Set([instance.initiatorId, ...approverIds])];
+      const approverIds = (approverRows as Array<{ id: string }>).map((r) => r.id).filter((id) => UUID_RE.test(id));
+      const rawUserIds = [instance.initiatorId, ...approverIds];
+      const userIds = [...new Set(rawUserIds.filter((id) => UUID_RE.test(id)))];
       if (userIds.length === 0) return;
       const users = await this.dataSource.query(
         `SELECT id, email, username, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
@@ -714,7 +717,9 @@ export class ApprovalEngineService {
       }
     } catch (err) {
       const Logger = (await import('@nestjs/common')).Logger;
-      new Logger('ApprovalEngineService').error(`sendCompletionEmail failed: ${(err as Error)?.message ?? err}`);
+      const lg = new Logger('ApprovalEngineService');
+      const e = err as Error & { code?: string; detail?: string; hint?: string };
+      lg.error(`sendCompletionEmail failed instanceId=${instance.id} userIds=${JSON.stringify(userIds)} msg=${e?.message ?? err} code=${e?.code ?? ''} detail=${e?.detail ?? ''} hint=${e?.hint ?? ''}`);
     }
   }
 
