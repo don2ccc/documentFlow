@@ -666,11 +666,11 @@ export class ApprovalEngineService {
     let userIds: string[] = [];
     try {
       const approverRows = await this.dataSource.query(
-        `SELECT DISTINCT "actorId" AS id FROM approval_records WHERE "instanceId" = $1 AND "actorId" IS NOT NULL AND "actorId" <> 'system'`,
+        `SELECT DISTINCT "actorId" AS id FROM approval_records WHERE "instanceId" = $1 AND "actorId" IS NOT NULL AND "actorId"::text <> 'system'`,
         [instance.id]
       );
-      const approverIds = (approverRows as Array<{ id: string }>).map((r) => r.id).filter((id) => UUID_RE.test(id));
-      const rawUserIds = [instance.initiatorId, ...approverIds];
+      const approverIds = (approverRows as Array<{ id: unknown }>).map((r) => String(r.id)).filter((id) => UUID_RE.test(id));
+      const rawUserIds = [String(instance.initiatorId), ...approverIds];
       userIds = [...new Set(rawUserIds.filter((id) => UUID_RE.test(id)))];
       if (userIds.length === 0) return;
       const users = await this.dataSource.query(
