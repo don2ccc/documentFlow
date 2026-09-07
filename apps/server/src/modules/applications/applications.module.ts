@@ -4,11 +4,12 @@ import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
 import { Application } from './entities/application.entity';
 import { ApplicationFile } from './entities/application-file.entity';
+import { SignatureModule } from '../signatures/signature.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Application, ApplicationFile]), ApprovalsModule, AuditModule],
+  imports: [SignatureModule, TypeOrmModule.forFeature([Application, ApplicationFile]), ApprovalsModule, AuditModule],
   controllers: [ApplicationsController],
   providers: [ApplicationsService],
   exports: [ApplicationsService]

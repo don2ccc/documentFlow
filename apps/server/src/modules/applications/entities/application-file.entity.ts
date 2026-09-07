@@ -12,4 +12,8 @@ export class ApplicationFile {
   @Column({ type: 'int' }) versionNo!: number;
   @Column({ type: 'uuid' }) uploadedBy!: string;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
+  @Column({ type: 'varchar', nullable: true }) signedPath!: string | null;
+  @Column({ type: 'timestamptz', nullable: true }) signedAt!: Date | null;
+  @Column({ type: 'uuid', nullable: true }) signedBy!: string | null;
+  @Column({ type: 'varchar', nullable: true }) signedByName!: string | null;
 }

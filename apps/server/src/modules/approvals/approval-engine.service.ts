@@ -15,6 +15,7 @@ import { Application } from '../applications/entities/application.entity';
 import { ApprovalInstance } from './entities/approval-instance.entity';
 import { ApprovalRecord } from './entities/approval-record.entity';
 import { ApprovalTask } from './entities/approval-task.entity';
+import { SignatureService } from '../signatures/signature.service';
 
 interface ResolvedTarget { assigneeId?: string; assigneeRoleId?: string; userIds: string[] }
 
@@ -30,7 +31,8 @@ export class ApprovalEngineService {
     private readonly workflows: WorkflowsService,
     private readonly dataSource: DataSource,
     private readonly audit: AuditService,
-    private readonly mailer: MailerService
+    private readonly mailer: MailerService,
+    private readonly signatureService: SignatureService
   ) {}
 
   async submit(workflowId: string, targetId: string, targetType: 'document' | 'application', initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
@@ -77,6 +79,7 @@ export class ApprovalEngineService {
         await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
       }
       void this.sendCompletionEmail(instance, 'approved', '[文档审批] 审批已通过', '您参与的审批已全部通过，已自动归档。');
+      void this.signatureService.signApplicationFiles(instance.documentId, instance.id);
       return;
     }
     if (node.type === NodeType.Start) {
