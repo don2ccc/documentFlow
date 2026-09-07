@@ -201,7 +201,10 @@ export class ApplicationsService {
         size: f.size,
         versionNo: f.versionNo,
         uploadedBy: f.uploadedBy,
-        createdAt: f.createdAt.toISOString()
+        createdAt: f.createdAt.toISOString(),
+        signedPath: f.signedPath ?? null,
+        signedAt: f.signedAt ? f.signedAt.toISOString() : null,
+        signedByName: f.signedByName ?? null
       }))
     };
   }

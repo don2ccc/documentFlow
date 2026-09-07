@@ -191,6 +191,9 @@ export interface ApplicationFileInfo {
   versionNo: number;
   uploadedBy: string;
   createdAt: string;
+  signedPath: string | null;
+  signedAt: string | null;
+  signedByName: string | null;
 }
 export interface ApplicationListItem {
   id: string;
