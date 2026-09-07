@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Post, Query } from '@nestjs/common';
 import { WorkflowStatus } from '@document-flow/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { SaveWorkflowDto } from './dto/save-workflow.dto';
@@ -41,4 +41,11 @@ export class WorkflowsController {
   deactivate(@Param('id') id: string) {
     return this.workflows.setStatus(id, WorkflowStatus.Disabled);
   }
+
+  @Delete(':id')
+  @RequirePermission('workflow:manage')
+  remove(@Param('id') id: string) {
+    return this.workflows.remove(id);
+  }
 }
+

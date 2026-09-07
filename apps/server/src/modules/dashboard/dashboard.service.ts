@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser, DocumentStatus } from '@document-flow/shared';
 import { ApprovalEngineService } from '../approvals/approval-engine.service';
+import { Application } from '../applications/entities/application.entity';
 import { Document } from '../documents/entities/document.entity';
 
 @Injectable()
 export class DashboardService {
   constructor(
     @InjectRepository(Document) private readonly docRepo: Repository<Document>,
+    @InjectRepository(Application) private readonly appRepo: Repository<Application>,
     private readonly engine: ApprovalEngineService
   ) {}
 
@@ -19,7 +21,7 @@ export class DashboardService {
       this.docRepo.countBy({ ownerId: user.id, status: DocumentStatus.Archived }),
       this.docRepo.countBy({ ownerId: user.id, status: DocumentStatus.Rejected })
     ]);
-    const recent = await this.docRepo.find({
+    const recentApps = await this.appRepo.find({
       where: { ownerId: user.id },
       order: { createdAt: 'DESC' },
       take: 8
@@ -29,7 +31,12 @@ export class DashboardService {
       myPending,
       myApproved,
       myRejected,
-      recentInstances: recent.map((d) => ({ id: d.id, title: d.title, status: d.status, createdAt: d.createdAt.toISOString() }))
+      recentInstances: recentApps.map((a) => ({
+        id: a.id,
+        title: a.title,
+        status: a.status,
+        createdAt: a.createdAt.toISOString()
+      }))
     };
   }
 }

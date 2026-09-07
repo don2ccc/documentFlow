@@ -4,6 +4,7 @@ import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useLocation, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { OfficePreview } from '../components/OfficePreview';
 import { applicationsApi, ApplicationDetail, ApprovalTaskAccess, approvalsApi, UserItem, usersApi } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
@@ -11,6 +12,62 @@ import { StatusTag } from '../components/StatusTag';
 
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+
+
+const MIME_TYPE_LABEL: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/vnd.oasis.opendocument.text': 'ODT',
+  'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
+  'application/vnd.oasis.opendocument.presentation': 'ODP',
+  'application/rtf': 'RTF',
+  'application/zip': 'ZIP',
+  'application/x-rar-compressed': 'RAR',
+  'application/x-7z-compressed': '7Z',
+  'application/x-tar': 'TAR',
+  'application/gzip': 'GZ',
+  'application/json': 'JSON',
+  'application/xml': 'XML',
+  'application/octet-stream': 'BIN',
+  'text/plain': 'TXT',
+  'text/csv': 'CSV',
+  'text/html': 'HTML',
+  'text/xml': 'XML',
+  'text/markdown': 'MD',
+  'text/x-markdown': 'MD',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPG',
+  'image/gif': 'GIF',
+  'image/bmp': 'BMP',
+  'image/webp': 'WEBP',
+  'image/svg+xml': 'SVG',
+  'image/tiff': 'TIFF',
+  'video/mp4': 'MP4',
+  'video/quicktime': 'MOV',
+  'video/x-msvideo': 'AVI',
+  'video/x-matroska': 'MKV',
+  'audio/mpeg': 'MP3',
+  'audio/wav': 'WAV',
+  'audio/ogg': 'OGG',
+  'audio/flac': 'FLAC',
+  'audio/aac': 'AAC',
+};
+
+function formatFileType(mimeType: string, fileName: string): string {
+  if (mimeType && MIME_TYPE_LABEL[mimeType.toLowerCase()]) {
+    return MIME_TYPE_LABEL[mimeType.toLowerCase()];
+  }
+  const ext = (fileName || '').split('.').pop();
+  if (ext && ext.length <= 5 && /^[a-zA-Z0-9]+$/.test(ext)) {
+    return ext.toUpperCase();
+  }
+  return mimeType || '-';
+}
 
 export function ApplicationDetailPage() {
   const { id } = useParams();
@@ -22,6 +79,8 @@ export function ApplicationDetailPage() {
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ fileId: string; fileName: string } | null>(null);
   const [previewError, setPreviewError] = useState('');
+  const [officeBlob, setOfficeBlob] = useState<Blob | null>(null);
+  const [officeMime, setOfficeMime] = useState<string>('');
   const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const { user, permissions } = useAuth();
@@ -174,14 +233,26 @@ export function ApplicationDetailPage() {
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewFile(null);
+    setOfficeBlob(null);
+    setOfficeMime('');
     setPreviewTarget({ fileId, fileName });
     setPreviewError('');
     setPage(1);
     setNumPages(0);
     try {
       const res = await api.get(`/applications/${id}/files/${fileId}/preview`, { responseType: 'arraybuffer', timeout: 120_000 });
-      const file = new File([new Uint8Array(res.data)], 'preview.pdf', { type: 'application/pdf' });
-      setPreviewFile(file);
+      const rawMode = (res.headers['x-preview-mode'] || '') === 'raw';
+      const ct = String(res.headers['content-type'] || '').toLowerCase();
+      const isOffice = rawMode || /(spreadsheet|wordprocessing|presentation|ms-excel|msword|opendocument)/.test(ct);
+      if (isOffice) {
+        const mime = ct || 'application/octet-stream';
+        const blob = new Blob([new Uint8Array(res.data)], { type: mime });
+        setOfficeMime(mime);
+        setOfficeBlob(blob);
+      } else {
+        const file = new File([new Uint8Array(res.data)], 'preview.pdf', { type: 'application/pdf' });
+        setPreviewFile(file);
+      }
     } catch (e: any) {
       const status = e?.response?.status;
       if (status === 403) setPreviewError('您没有预览权限，请联系管理员');
@@ -210,7 +281,7 @@ export function ApplicationDetailPage() {
       title: '类型',
       dataIndex: 'mimeType',
       width: 100,
-      render: (v: string) => <Tag>{v.split('/')[1]?.toUpperCase() || v}</Tag>
+      render: (v: string, r: ApplicationDetail['files'][number]) => <Tag>{formatFileType(v, r.fileName)}</Tag>
     },
     { title: '大小', dataIndex: 'size', width: 110, render: (v: number) => formatSize(v) },
     { title: '上传时间', dataIndex: 'createdAt', width: 180, render: (v: string) => v.slice(0, 16).replace('T', ' ') },
@@ -311,6 +382,8 @@ export function ApplicationDetailPage() {
             <p>{previewError}</p>
             {previewTarget && <Button onClick={() => loadPreview(previewTarget.fileId, previewTarget.fileName)}>重试</Button>}
           </div>
+        ) : officeBlob && previewTarget ? (
+          <OfficePreview blob={officeBlob} fileName={previewTarget.fileName} mimeType={officeMime} />
         ) : previewFile ? (
           <>
             <div style={{ maxHeight: '70vh', overflow: 'auto', textAlign: 'center' }}>

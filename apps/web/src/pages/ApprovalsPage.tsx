@@ -26,7 +26,7 @@ export function ApprovalsPage() {
 
   const columns = [
     { title: '文档标题', dataIndex: 'title', render: (v: string, r: TodoItem) => <a onClick={() => navigate(`/applications/${r.documentId}`)}>{v}</a> },
-    { title: '当前节点', dataIndex: 'nodeName', width: 140 },
+    { title: '用户名', dataIndex: 'nodeName', width: 140 },
     {
       title: '优先级',
       dataIndex: 'priority',

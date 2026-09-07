@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { execFile } from 'child_process';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { AuthUser, DocumentStatus } from '@document-flow/shared';
 import { ApprovalEngineService } from '../approvals/approval-engine.service';
@@ -28,6 +29,7 @@ export interface DocumentDto {
   currentReviewer: Array<{ userId: string; name: string }> | null;
   createdAt: string;
   latestVersion: { id: string; versionNo: number; fileName: string; size: number; mimeType: string } | null;
+  resubmissionLocked?: boolean;
 }
 
 @Injectable()
@@ -39,7 +41,8 @@ export class DocumentsService {
     private readonly converter: ConverterService,
     private readonly dataSource: DataSource,
     private readonly engine: ApprovalEngineService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Inject('PREVIEW_DIR') private readonly previewDir: string
   ) {}
 
   async upload(userId: string, file: Express.Multer.File, dto: UploadDocumentDto) {
@@ -122,6 +125,7 @@ export class DocumentsService {
   async submit(user: AuthUser, id: string, workflowId: string, chosenApproverIds?: Record<string, string>) {
     const doc = await this.getDocument(id);
     if (doc.ownerId !== user.id) throw new ForbiddenException('只能提交自己的文档');
+    if (await this.engine.wasWithdrawn(id, 'document')) throw new BadRequestException('该文档已撤回，不能修改后再次提交');
     if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(doc.status)) throw new BadRequestException('当前状态不可提交');
     const wfId = workflowId ?? doc.defaultWorkflowId;
     if (!wfId) throw new BadRequestException('请选择审批流程');
@@ -175,7 +179,8 @@ export class DocumentsService {
       catch { progress = null; }
     }
     const ownerNames = await this.loadOwnerNames([doc.ownerId]);
-    return { ...(await this.toDto(doc, versions[0], ownerNames.get(doc.ownerId) ?? null)), versions, progress, currentInstanceId: doc.currentInstanceId };
+    const resubmissionLocked = await this.engine.wasWithdrawn(id, 'document');
+    return { ...(await this.toDto(doc, versions[0], ownerNames.get(doc.ownerId) ?? null)), versions, progress, currentInstanceId: doc.currentInstanceId, resubmissionLocked };
   }
 
   async assertCanView(user: AuthUser, documentId: string): Promise<Document> {
@@ -215,6 +220,7 @@ export class DocumentsService {
   async addVersion(userId: string, documentId: string, file: Express.Multer.File, dto: CreateVersionDto) {
     const doc = await this.getDocument(documentId);
     if (doc.ownerId !== userId) throw new ForbiddenException('只能操作自己的文档');
+    if (await this.engine.wasWithdrawn(documentId, 'document')) throw new BadRequestException('该文档已撤回，不能修改');
     if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(doc.status)) {
       throw new BadRequestException('仅草稿或已驳回的文档可更新版本');
     }
@@ -260,6 +266,17 @@ export class DocumentsService {
 
   async streamPreview(user: AuthUser, documentId: string, versionId: string, res: any) {
     await this.assertCanView(user, documentId);
+    const OFFICE_MIME = new Set([
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'application/vnd.oasis.opendocument.text',
+      'application/vnd.oasis.opendocument.presentation',
+    ]);
     let version = await this.versionRepo.findOneBy({ id: versionId, documentId });
     if (!version) {
       const fileRows = await this.dataSource.query(
@@ -268,15 +285,78 @@ export class DocumentsService {
       );
       if (fileRows[0]) {
         const f = fileRows[0];
-        const previewPath = path.resolve(f.filePath);
-        if (fs.existsSync(previewPath)) {
-          res.type(f.mimeType || 'application/pdf');
-          res.sendFile(previewPath);
+        if (OFFICE_MIME.has(f.mimeType)) {
+          if (!fs.existsSync(f.filePath)) {
+            res.status(404).json({ previewFailed: true, message: '文件不存在' });
+            return;
+          }
+          res.setHeader('X-Preview-Mode', 'raw');
+          res.setHeader('Content-Type', f.mimeType);
+          res.setHeader('Content-Disposition', `inline; filename=${encodeURIComponent(f.fileName)}`);
+          res.sendFile(path.resolve(f.filePath));
           return;
         }
-        throw new NotFoundException('文件不存在');
+        const outFile = path.join(this.previewDir, `${f.id}.pdf`);
+        if (f.mimeType === 'application/pdf') {
+          if (!fs.existsSync(f.filePath)) throw new NotFoundException('文件不存在');
+          res.type('application/pdf');
+          res.sendFile(path.resolve(f.filePath));
+          return;
+        }
+        if (!fs.existsSync(outFile)) {
+          fs.mkdirSync(this.previewDir, { recursive: true });
+          try {
+            const proc = execFile('libreoffice', [
+              '--headless', '--convert-to', 'pdf',
+              '--outdir', this.previewDir, f.filePath
+            ]);
+            await new Promise<void>((resolve, reject) => {
+              const t = setTimeout(() => {
+                try { proc.kill('SIGKILL'); } catch (_) {}
+                reject(new Error('libreoffice 转换超时(90s)'));
+              }, 90_000);
+              let done = false;
+              proc.on('exit', (code) => {
+                clearTimeout(t);
+                if (done) return;
+                done = true;
+                code === 0 ? resolve() : reject(new Error('libreoffice 退出码 ' + code));
+              });
+              proc.on('error', (e) => {
+                if (done) return;
+                done = true;
+                clearTimeout(t);
+                reject(e);
+              });
+            });
+            const base = path.basename(f.filePath, path.extname(f.filePath));
+            const produced = path.join(this.previewDir, `${base}.pdf`);
+            if (fs.existsSync(produced) && produced !== outFile) fs.renameSync(produced, outFile);
+          } catch (e) {
+            res.status(422).json({ previewFailed: true, message: String((e as Error).message) });
+            return;
+          }
+        }
+        if (!fs.existsSync(outFile)) {
+          res.status(422).json({ previewFailed: true });
+          return;
+        }
+        res.type('application/pdf');
+        res.sendFile(path.resolve(outFile));
+        return;
       }
       throw new NotFoundException('版本不存在');
+    }
+    if (OFFICE_MIME.has(version.mimeType)) {
+      if (!fs.existsSync(version.filePath)) {
+        res.status(404).json({ previewFailed: true, message: '文件不存在' });
+        return;
+      }
+      res.setHeader('X-Preview-Mode', 'raw');
+      res.setHeader('Content-Type', version.mimeType);
+      res.setHeader('Content-Disposition', `inline; filename=${encodeURIComponent(version.fileName)}`);
+      res.sendFile(path.resolve(version.filePath));
+      return;
     }
     const job = await this.jobRepo.findOneBy({ documentVersionId: versionId });
     if (!job || job.status === 'pending') { res.status(202).json({ converting: true }); return; }

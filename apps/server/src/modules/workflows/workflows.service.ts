@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { NodeType, WorkflowStatus } from '@document-flow/shared';
 import { SaveWorkflowDto, WorkflowEdgeDto, WorkflowNodeDto } from './dto/save-workflow.dto';
 import { WorkflowEdge } from './entities/workflow-edge.entity';
@@ -15,6 +15,7 @@ export class WorkflowsService {
     @InjectRepository(Workflow) private readonly workflowRepo: Repository<Workflow>,
     @InjectRepository(WorkflowNode) private readonly nodeRepo: Repository<WorkflowNode>,
     @InjectRepository(WorkflowEdge) private readonly edgeRepo: Repository<WorkflowEdge>,
+    private readonly dataSource: DataSource,
     private readonly audit: AuditService
   ) {}
 
@@ -114,6 +115,26 @@ export class WorkflowsService {
     return this.workflowRepo.save(wf);
   }
 
+  async remove(id: string) {
+    const wf = await this.workflowRepo.findOneBy({ id });
+    if (!wf) throw new NotFoundException('流程不存在');
+    const rows = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS c FROM approval_instances WHERE "workflowId" = $1 AND status = 'running'`,
+      [id]
+    );
+    const running = Number(rows?.[0]?.c ?? 0);
+    if (running > 0) {
+      throw new BadRequestException(`当前还有 ${running} 个进行中的审批单据使用此流程，请先处理完毕后再删除`);
+    }
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query('DELETE FROM workflow_edges WHERE "workflowId" = $1', [id]);
+      await manager.query('DELETE FROM workflow_nodes WHERE "workflowId" = $1', [id]);
+      await manager.query('DELETE FROM workflows WHERE id = $1', [id]);
+    });
+    await this.audit.log('system', 'workflow:delete', 'workflow', id, { name: wf.name });
+    return { id };
+  }
+
   validateGraph(nodes: WorkflowNodeDto[], edges: WorkflowEdgeDto[]): void {
     const starts = nodes.filter((n) => n.type === NodeType.Start);
     const ends = nodes.filter((n) => n.type === NodeType.End);
@@ -150,3 +171,4 @@ export class WorkflowsService {
     if (reachable.size !== ids.size) throw new BadRequestException('存在不可达节点');
   }
 }
+

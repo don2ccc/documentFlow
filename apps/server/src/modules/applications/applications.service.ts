@@ -29,6 +29,7 @@ export interface ApplicationListItem {
   defaultWorkflowId: string | null;
   createdAt: string;
   updatedAt: string;
+  resubmissionLocked?: boolean;
 }
 
 @Injectable()
@@ -148,6 +149,7 @@ export class ApplicationsService {
     if (!app) throw new NotFoundException('申请项目不存在');
     const ownerRow = await this.dataSource.query(`SELECT name FROM users WHERE id = $1`, [app.ownerId]);
     const ownerName = (ownerRow?.[0]?.name as string | undefined) ?? null;
+    const resubmissionLocked = await this.engine.wasWithdrawn(id, 'application');
     const files = await this.fileRepo.find({ where: { applicationId: id }, order: { createdAt: 'ASC' } });
     let currentReviewer: Array<{ userId: string; name: string }> | null = null;
     if (app.currentInstanceId) {
@@ -170,6 +172,7 @@ export class ApplicationsService {
       createdAt: app.createdAt.toISOString(),
       updatedAt: app.updatedAt.toISOString(),
       currentReviewer,
+      resubmissionLocked,
       files: files.map((f) => ({
         id: f.id,
         fileName: f.fileName,
@@ -193,6 +196,28 @@ export class ApplicationsService {
 
   async streamPreview(user: AuthUser, applicationId: string, fileId: string, res: any) {
     const f = await this.getFile(user, applicationId, fileId);
+    const OFFICE_MIME = new Set([
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'application/vnd.oasis.opendocument.text',
+      'application/vnd.oasis.opendocument.presentation',
+    ]);
+    if (OFFICE_MIME.has(f.mimeType)) {
+      if (!fs.existsSync(f.filePath)) {
+        res.status(404).json({ previewFailed: true, message: '文件不存在' });
+        return;
+      }
+      res.setHeader('X-Preview-Mode', 'raw');
+      res.setHeader('Content-Type', f.mimeType);
+      res.setHeader('Content-Disposition', `inline; filename=${encodeURIComponent(f.fileName)}`);
+      res.sendFile(path.resolve(f.filePath));
+      return;
+    }
     if (f.mimeType === 'application/pdf') {
       res.type('application/pdf');
       res.sendFile(path.resolve(f.filePath));
@@ -256,8 +281,12 @@ export class ApplicationsService {
   async withdraw(user: AuthUser, id: string) {
     const app = await this.appRepo.findOne({ where: { id } });
     if (!app) throw new NotFoundException('申请项目不存在');
+    if (app.ownerId !== user.id) throw new ForbiddenException('只有创建人可以撤回');
     if (!app.currentInstanceId) throw new BadRequestException('当前状态不可撤回');
     await this.engine.withdraw(app.currentInstanceId, user.id);
+    app.status = DocumentStatus.Draft;
+    app.currentInstanceId = null;
+    await this.appRepo.save(app);
     return { ok: true };
   }
 
@@ -372,6 +401,9 @@ export class ApplicationsService {
   async submit(user: AuthUser, id: string, workflowId: string) {
     const app = await this.appRepo.findOne({ where: { id } });
     if (!app) throw new NotFoundException('申请项目不存在');
+    if (app.ownerId !== user.id) throw new ForbiddenException('只能提交自己的申请项目');
+    if (await this.engine.wasWithdrawn(id, 'application')) throw new BadRequestException('该申请项目已撤回，不能修改后再次提交');
+    if (![DocumentStatus.Draft, DocumentStatus.Rejected].includes(app.status)) throw new BadRequestException('当前状态不可提交');
     const instance = await this.engine.submit(workflowId, app.id, 'application', user.id, {});
     app.status = DocumentStatus.InApproval;
     app.currentInstanceId = instance.id;

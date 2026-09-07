@@ -6,6 +6,7 @@ export interface DocumentListItem {
   status: string; ownerId: string; ownerName: string | null; createdAt: string;
   currentInstanceId: string | null;
   currentReviewer: Array<{ userId: string; name: string }> | null;
+  resubmissionLocked?: boolean;
   latestVersion: { id: string; versionNo: number; fileName: string; size: number; mimeType: string } | null;
 }
 export interface DocumentVersion { id: string; versionNo: number; fileName: string; size: number; mimeType: string; reason: string | null; createdAt: string }
@@ -57,7 +58,8 @@ export const workflowsApi = {
   create: (data: { name: string; description?: string }) => api.post('/workflows', data).then((r) => r.data),
   saveNodes: (id: string, data: { nodes: any[]; edges?: any[] }) => api.put(`/workflows/${id}/nodes`, data).then((r) => r.data),
   activate: (id: string) => api.post(`/workflows/${id}/activate`).then((r) => r.data),
-  deactivate: (id: string) => api.post(`/workflows/${id}/deactivate`).then((r) => r.data)
+  deactivate: (id: string) => api.post(`/workflows/${id}/deactivate`).then((r) => r.data),
+  remove: (id: string) => api.delete(`/workflows/${id}`).then((r) => r.data)
 };
 
 export const categoriesApi = {
@@ -203,6 +205,7 @@ export interface ApplicationListItem {
   createdAt: string;
   updatedAt: string;
   currentReviewer: Array<{ userId: string; name: string }> | null;
+  resubmissionLocked?: boolean;
 }
 export interface ApplicationQueryItem extends ApplicationListItem {
   categoryId: string | null;

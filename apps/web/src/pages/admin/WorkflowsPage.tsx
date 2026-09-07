@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Input, Modal, Space, Table, Tag, message } from 'antd';
+import { Button, Card, Input, message, Modal, Popconfirm, Space, Table, Tag } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { workflowsApi, WorkflowItem } from '../../api/endpoints';
 
@@ -27,6 +27,17 @@ export function WorkflowsPage() {
     load();
   };
 
+  const remove = async (w: WorkflowItem) => {
+    try {
+      await workflowsApi.remove(w.id);
+      message.success(`已删除流程「${w.name}」`);
+      load();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } }; message?: string };
+      message.error(err?.response?.data?.message ?? err?.message ?? '删除失败');
+    }
+  };
+
   return (
     <Card
       title="审批流程预设"
@@ -51,6 +62,16 @@ export function WorkflowsPage() {
               <Space>
                 <Button size="small" type="link" onClick={() => navigate(`/admin/workflows/${r.id}`)}>配置节点</Button>
                 <Button size="small" type="link" onClick={() => toggle(r)}>{r.status === 'active' ? '停用' : '启用'}</Button>
+                <Popconfirm
+                  title="确定删除该流程？"
+                  description="删除前会校验是否存在未结案的审批单据，如有将无法删除。"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => remove(r)}
+                >
+                  <Button size="small" type="link" danger>删除</Button>
+                </Popconfirm>
               </Space>
             )
           }
@@ -62,3 +83,4 @@ export function WorkflowsPage() {
     </Card>
   );
 }
+

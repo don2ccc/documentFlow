@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { LockOutlined } from '@ant-design/icons';
 import { api } from '../api/client';
+import { OfficePreview } from '../components/OfficePreview';
 import { documentsApi, DocumentDetail } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
@@ -16,6 +17,7 @@ type PreviewState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'ok'; file: File }
+  | { kind: 'office'; blob: Blob; fileName: string; mimeType: string }
   | { kind: 'converting' }
   | { kind: 'failed'; message: string }
   | { kind: 'forbidden' };
@@ -120,6 +122,16 @@ export function DocumentDetailPage() {
         responseType: 'arraybuffer',
         timeout: 45_000
       });
+      const rawMode = (res.headers['x-preview-mode'] || '') === 'raw';
+      const ct = String(res.headers['content-type'] || '').toLowerCase();
+      const isOffice = rawMode || /(spreadsheet|wordprocessing|presentation|ms-excel|msword|opendocument)/.test(ct);
+      if (isOffice) {
+        const mime = ct || 'application/octet-stream';
+        const blob = new Blob([new Uint8Array(res.data)], { type: mime });
+        const fileName = latest?.fileName || 'preview';
+        setPreview({ kind: 'office', blob, fileName, mimeType: mime });
+        return;
+      }
       const file = new File([new Uint8Array(res.data)], 'preview.pdf', { type: 'application/pdf' });
       setPreview({ kind: 'ok', file });
     } catch (e: any) {
@@ -256,12 +268,13 @@ export function DocumentDetailPage() {
         title={<Space><span>{detail.title}</span><StatusTag status={detail.status} /></Space>}
         extra={
           <Space wrap>
-            {canUpload && detail.status === 'draft' && <Button type="primary" onClick={() => setSubmitOpen(true)}>提交审批</Button>}
-            {canUpload && detail.status === 'rejected' && (
+            {canUpload && !detail.resubmissionLocked && detail.status === 'draft' && <Button type="primary" onClick={() => setSubmitOpen(true)}>提交审批</Button>}
+            {canUpload && !detail.resubmissionLocked && detail.status === 'rejected' && (
               <Upload accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif" showUploadList={false} beforeUpload={(f) => { uploadVersion(f); return false; }}>
                 <Button type="primary">上传新版本并重新提交</Button>
               </Upload>
             )}
+            {detail.resubmissionLocked && detail.status === 'draft' && <Tag color="default">已撤回，不能修改或重新提交</Tag>}
             {canUpload && detail.status === 'in_approval' && (
               <>
                 <Button onClick={withdraw}>撤回</Button>
@@ -306,6 +319,9 @@ export function DocumentDetailPage() {
                 </div>
               )}
               {canPreview && preview.kind === 'forbidden' && permissionLockBlock}
+              {canPreview && preview.kind === 'office' && (
+                <OfficePreview blob={preview.blob} fileName={preview.fileName} mimeType={preview.mimeType} />
+              )}
               {canPreview && preview.kind === 'ok' && (
                 <>
                   <Document file={preview.file} onLoadSuccess={({ numPages: n }) => setNumPages(n)}>
@@ -350,7 +366,7 @@ export function DocumentDetailPage() {
           <ApprovalTimeline progress={detail.progress} />
         </Card>
       </Card>
-      {detail && canUpload && (
+      {detail && canUpload && !detail.resubmissionLocked && (
         <SubmitFlowModal documentId={detail.id} open={submitOpen} onClose={() => setSubmitOpen(false)} onSuccess={() => { setSubmitOpen(false); load(); }} />
       )}
     </div>

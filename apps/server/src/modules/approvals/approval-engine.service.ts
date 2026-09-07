@@ -256,7 +256,8 @@ export class ApprovalEngineService {
     const rows = await qb
       .select([
         't.id AS "taskId"', 'd.id AS "documentId"', 'd.title AS title', 'd.status AS "documentStatus"',
-        'i.id AS "instanceId"', 'i."initiatorId" AS "initiatorId"', 't."dueAt" AS "dueAt"', 't."nodeId" AS "nodeId"'
+        'i.id AS "instanceId"', 'i."initiatorId" AS "initiatorId"', 't."dueAt" AS "dueAt"', 't."nodeId" AS "nodeId"',
+        't."assigneeId" AS "assigneeId"', 't."assigneeRoleId" AS "assigneeRoleId"'
       ])
       .orderBy('t."createdAt"', 'ASC')
       .skip((page - 1) * pageSize).take(pageSize)
@@ -268,17 +269,39 @@ export class ApprovalEngineService {
     const users = initiatorIds.length
       ? await this.dataSource.query('SELECT id, name FROM users WHERE id = ANY($1)', [initiatorIds])
       : [];
-    const userMap = new Map(users.map((u: { id: string; name: string }) => [u.id, u.name]));
+    const assigneeIds = [...new Set(rows.map((r) => r.assigneeId).filter(Boolean))];
+    const assigneeRoleIds = [...new Set(rows.map((r) => r.assigneeRoleId).filter(Boolean))];
+    const assigneeUsers = assigneeIds.length
+      ? await this.dataSource.query('SELECT id, username FROM users WHERE id = ANY($1)', [assigneeIds])
+      : [];
+    const roleUsers = assigneeRoleIds.length
+      ? await this.dataSource.query(
+        'SELECT ur."roleId" AS "roleId", u.username FROM user_roles ur JOIN users u ON u.id = ur."userId" WHERE ur."roleId" = ANY($1) AND u.status = $2 ORDER BY u.username',
+        [assigneeRoleIds, 'active']
+      )
+      : [];
+    const initiatorNameMap = new Map(users.map((u: { id: string; name: string }) => [u.id, u.name]));
+    const assigneeUsernameMap = new Map(assigneeUsers.map((u: { id: string; username: string }) => [u.id, u.username]));
+    const roleUsernameMap = new Map<string, string[]>();
+    for (const row of roleUsers as Array<{ roleId: string; username: string }>) {
+      const names = roleUsernameMap.get(row.roleId) ?? [];
+      names.push(row.username);
+      roleUsernameMap.set(row.roleId, names);
+    }
     const instanceMap = new Map(instances.map((i) => [i.id, i]));
     const items = rows.map((r: any) => {
       const inst = instanceMap.get(r.instanceId)!;
       const node = inst.snapshot.nodes.find((n) => n.id === r.nodeId);
+      const reviewerUsernames = r.assigneeId
+        ? [assigneeUsernameMap.get(r.assigneeId)].filter(Boolean) as string[]
+        : (roleUsernameMap.get(r.assigneeRoleId) ?? []);
       const dueAt = r.dueAt ? new Date(r.dueAt) : null;
       const remaining = dueAt ? dueAt.getTime() - Date.now() : Number.POSITIVE_INFINITY;
       const priority = remaining < 2 * 3600_000 ? 'high' : remaining < 24 * 3600_000 ? 'normal' : 'low';
       return {
-        taskId: r.taskId, documentId: r.documentId, title: r.title, nodeName: node?.name ?? '审批',
-        priority, dueAt: dueAt?.toISOString() ?? null, submittedByName: userMap.get(r.initiatorId) ?? '未知',
+        taskId: r.taskId, documentId: r.documentId, title: r.title,
+        nodeName: reviewerUsernames.length ? reviewerUsernames.join(', ') : (node?.name ?? '审批'),
+        priority, dueAt: dueAt?.toISOString() ?? null, submittedByName: initiatorNameMap.get(r.initiatorId) ?? '未知',
         documentStatus: r.documentStatus
       };
     });
@@ -314,15 +337,21 @@ export class ApprovalEngineService {
     await this.notify([toUserId], 'new_task', '任务已转办给您', `文档审批：${node.name}`, instance.documentId);
   }
 
+  async wasWithdrawn(documentId: string, targetType: 'document' | 'application') {
+    const rows = await this.dataSource.query(
+      'SELECT 1 FROM approval_instances WHERE "documentId" = $1 AND "targetType" = $2 AND status = $3 LIMIT 1',
+      [documentId, targetType, InstanceStatus.Withdrawn]
+    );
+    return rows.length > 0;
+  }
+
   async withdraw(instanceId: string, actorId: string) {
     const instance = await this.instanceRepo.findOneBy({ id: instanceId });
     if (!instance) throw new NotFoundException('实例不存在');
     if (instance.initiatorId !== actorId) throw new ForbiddenException('只有发起人可以撤回');
     if (instance.status !== InstanceStatus.Running) throw new BadRequestException('当前状态不可撤回');
-    const processed = await this.recordRepo.find({
-      where: { instanceId, action: In([RecordAction.Approve, RecordAction.Reject, RecordAction.Transfer]) }
-    });
-    if (processed.length > 0) throw new BadRequestException('已有节点被处理，无法撤回');
+    const pendingTasks = await this.taskRepo.findBy({ instanceId, status: TaskStatus.Pending });
+    const assigneeIds = pendingTasks.map((t) => t.assigneeId).filter((id): id is string => !!id);
     instance.status = InstanceStatus.Withdrawn;
     instance.finishedAt = new Date();
     await this.instanceRepo.save(instance);
@@ -334,6 +363,9 @@ export class ApprovalEngineService {
     }
     await this.recordRepo.save(this.recordRepo.create({ instanceId, actorId, action: RecordAction.Withdraw }));
     await this.audit.log(actorId, 'approval:withdraw', 'approval_instance', instanceId);
+    if (assigneeIds.length) {
+      await this.notify([...new Set(assigneeIds)], 'new_task', '新任务已经撤回', '', instance.documentId);
+    }
   }
 
   async remind(instanceId: string, actorId: string) {
@@ -586,6 +618,40 @@ export class ApprovalEngineService {
     }
   }
 
+  private formatMailDate(value: Date | string) {
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(new Date(value));
+  }
+
+  private escapeHtml(value: string) {
+    return value.replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char] ?? char);
+  }
+
+  private async getApprovalMailContext(instance: ApprovalInstance, relatedId: string) {
+    const table = instance.targetType === 'application' ? 'applications' : 'documents';
+    const rows = await this.dataSource.query(
+      `SELECT item.title, item."createdAt", creator.name AS "creatorName"
+       FROM ${table} item
+       LEFT JOIN users creator ON creator.id = item."ownerId"
+       WHERE item.id = $1`,
+      [relatedId]
+    );
+    const row = rows[0];
+    return row
+      ? {
+        projectName: String(row.title ?? ''),
+        creatorName: String(row.creatorName ?? ''),
+        createdAt: this.formatMailDate(row.createdAt),
+        targetPath: instance.targetType === 'application' ? 'applications' : 'documents'
+      }
+      : null;
+  }
+
   private async notify(userIds: string[], type: string, title: string, content: string, relatedId?: string) {
     const ids = [...new Set(userIds)];
     for (const userId of ids) {
@@ -596,14 +662,45 @@ export class ApprovalEngineService {
     // 同时发邮件给设置了 email 的用户（系统通知+邮件双通道）
     if (ids.length > 0) {
       const users = await this.dataSource.query(
-`SELECT id, email, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
+`SELECT id, email, username, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
         [ids]
       );
-      const addresses = users.map((u: any) => u.email).filter(Boolean);
-      if (addresses.length > 0) {
-        const link = relatedId ? `${process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443'}/documents/${relatedId}` : (process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443');
-        const html = `<p>${content}</p><p><a href="${link}">查看详情</a></p>`;
-        await this.mailer.send(addresses, `[文档审批] ${title}`, content, html);
+      if (users.length > 0) {
+        const isWithdrawalTask = type === 'new_task' && title === '新任务已经撤回' && relatedId;
+        const approvalInstance = type === 'new_task' && relatedId
+          ? await this.instanceRepo.findOneBy({
+              documentId: relatedId,
+              status: isWithdrawalTask ? InstanceStatus.Withdrawn : InstanceStatus.Running,
+            })
+          : null;
+        const approvalContext = approvalInstance && relatedId
+          ? await this.getApprovalMailContext(approvalInstance, relatedId)
+          : null;
+        const isNewApprovalTask = type === 'new_task' && title === '新任务待处理' && approvalContext;
+        const isWithdrawnTask = isWithdrawalTask && approvalContext;
+        const sentAt = isNewApprovalTask || isWithdrawnTask ? this.formatMailDate(new Date()) : null;
+        const link = relatedId
+          ? `${process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443'}/${approvalContext?.targetPath ?? 'documents'}/${relatedId}`
+          : (process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443');
+
+        for (const user of users as Array<{ email: string; username?: string; name?: string }>) {
+          const recipientName = user.name || user.username || user.email;
+          let mailSubject: string;
+          let mailText: string;
+          if (isNewApprovalTask) {
+            mailSubject = 'SPO 办公协同系统-[文档审批] 新任务待处理';
+            mailText = `Hi, 尊敬的${recipientName}：\n\n审批系统收到${approvalContext!.projectName}审批任务，本任务是由${approvalContext!.creatorName}于${approvalContext!.createdAt}在SPO办公协同系统中创建，请您审批！\n\nSPO 邮件系统推送\n${sentAt}`;
+          } else if (isWithdrawnTask) {
+            mailSubject = 'SPO 办公协同系统-[文档审批] 新任务已经撤回';
+            mailText = `Hi, 尊敬的${recipientName}：\n\n审批系统收到${approvalContext!.projectName}审批任务，本任务是由${approvalContext!.creatorName}于${approvalContext!.createdAt}在SPO办公协同系统中创建，目前已经撤回！\n\nSPO 邮件系统推送\n${sentAt}`;
+          } else {
+            mailSubject = `[文档审批] ${title}`;
+            mailText = content;
+          }
+          const htmlText = this.escapeHtml(mailText).replace(/\n/g, '<br>');
+          const html = `<p>${htmlText}</p><p><a href="${this.escapeHtml(link)}">查看详情</a></p>`;
+          await this.mailer.send(user.email, mailSubject, mailText, html);
+        }
       }
     }
   }

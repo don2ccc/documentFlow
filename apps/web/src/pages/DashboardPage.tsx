@@ -15,7 +15,7 @@ export function DashboardPage() {
   if (!data) return <Card loading />;
 
   const columns = [
-    { title: '文档标题', dataIndex: 'title', render: (v: string, r: any) => <a onClick={() => navigate(`/documents/${r.id}`)}>{v}</a> },
+    { title: '申请项目', dataIndex: 'title', render: (v: string, r: any) => <a onClick={() => navigate(`/applications/${r.id}`)}>{v}</a> },
     { title: '状态', dataIndex: 'status', width: 120, render: (v: string) => <StatusTag status={v} /> },
     { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => v.slice(0, 16).replace('T', ' ') }
   ];
