@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, In, Repository } from 'typeorm';
 import * as fs from 'fs';
@@ -21,6 +21,7 @@ interface ResolvedTarget { assigneeId?: string; assigneeRoleId?: string; userIds
 
 @Injectable()
 export class ApprovalEngineService {
+  private readonly log!: Logger;
   constructor(
     @InjectRepository(ApprovalInstance) private readonly instanceRepo: Repository<ApprovalInstance>,
     @InjectRepository(ApprovalTask) private readonly taskRepo: Repository<ApprovalTask>,
@@ -33,7 +34,7 @@ export class ApprovalEngineService {
     private readonly audit: AuditService,
     private readonly mailer: MailerService,
     private readonly signatureService: SignatureService
-  ) {}
+  ) { this.log = new Logger(ApprovalEngineService.name); }
 
   async submit(workflowId: string, targetId: string, targetType: 'document' | 'application', initiatorId: string, options?: { chosenApproverIds?: Record<string, string> }) {
     const wf = await this.workflows.getById(workflowId);
@@ -78,8 +79,16 @@ export class ApprovalEngineService {
         );
         await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
       }
-      void this.sendCompletionEmail(instance, 'approved', '[文档审批] 审批已通过', '您参与的审批已全部通过，已自动归档。');
-      void this.signatureService.signApplicationFiles(instance.documentId, instance.id);
+      void (async () => {
+        try {
+          // Wait for all PDFs to be stamped before sending completion email,
+          // so the email carries the signed (stamped) version of each attachment.
+          await this.signatureService.signApplicationFiles(instance.documentId, instance.id);
+          await this.sendCompletionEmail(instance, 'approved', '[文档审批] 审批已通过', '您参与的审批已全部通过，已自动归档。');
+        } catch (e) {
+          this.log.error('post-approval flow failed instanceId=' + instance.id + ': ' + (e as Error).message);
+        }
+      })();
       return;
     }
     if (node.type === NodeType.Start) {
@@ -673,7 +682,14 @@ export class ApprovalEngineService {
         [instance.id]
       );
       const approverIds = (approverRows as Array<{ id: unknown }>).map((r) => String(r.id)).filter((id) => UUID_RE.test(id));
-      const rawUserIds = [String(instance.initiatorId), ...approverIds];
+      // Include 抄送 (CC) recipients configured on Cc nodes of the workflow snapshot
+      const ccIds: string[] = [];
+      for (const n of (instance.snapshot.nodes ?? [])) {
+        if ((n as { type?: string }).type !== 'cc') continue;
+        const ids = ((n as { config?: { userIds?: string[] } }).config?.userIds ?? []) as string[];
+        for (const id of ids) if (UUID_RE.test(id)) ccIds.push(id);
+      }
+      const rawUserIds = [String(instance.initiatorId), ...approverIds, ...ccIds];
       userIds = [...new Set(rawUserIds.filter((id) => UUID_RE.test(id)))];
       if (userIds.length === 0) return;
       const users = await this.dataSource.query(
@@ -683,18 +699,23 @@ export class ApprovalEngineService {
       if ((users as Array<unknown>).length === 0) return;
       const fileRows = instance.targetType === 'application'
         ? await this.dataSource.query(
-            `SELECT id, "fileName" AS "fileName", "filePath" AS "filePath" FROM application_files WHERE "applicationId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
+            `SELECT id, "fileName" AS "fileName", "filePath" AS "filePath", "signedPath" AS "signedPath", "mimeType" AS "mimeType" FROM application_files WHERE "applicationId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
             [instance.documentId]
           )
         : await this.dataSource.query(
-            `SELECT id, "fileName", "filePath" FROM document_versions WHERE "documentId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
+            `SELECT id, "fileName", "filePath", NULL AS "signedPath", NULL AS "mimeType" FROM document_versions WHERE "documentId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
             [instance.documentId]
           );
       const seen = new Set<string>();
       const attachments: Array<{ filename: string; path: string }> = [];
-      for (const f of fileRows as Array<{ fileName: string; filePath: string }>) {
-        if (!f.filePath || !fs.existsSync(f.filePath)) continue;
-        let name = f.fileName;
+      for (const f of fileRows as Array<{ fileName: string; filePath: string; signedPath?: string | null; mimeType?: string | null }>) {
+        // Prefer the signed version (with 印章) when one exists
+        const useSigned = !!(f.signedPath && fs.existsSync(f.signedPath));
+        const resolvedPath = useSigned ? (f.signedPath as string) : f.filePath;
+        if (!resolvedPath || !fs.existsSync(resolvedPath)) continue;
+        let baseName = f.fileName;
+        if (useSigned && /\.pdf$/i.test(baseName)) baseName = baseName.replace(/\.pdf$/i, '-已签章.pdf');
+        let name = baseName;
         let suffix = 1;
         while (seen.has(name)) {
           const dot = f.fileName.lastIndexOf('.');
@@ -704,7 +725,7 @@ export class ApprovalEngineService {
           suffix += 1;
         }
         seen.add(name);
-        attachments.push({ filename: name, path: f.filePath });
+        attachments.push({ filename: name, path: resolvedPath });
       }
       const link = `${process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443'}/${instance.targetType === 'application' ? 'applications' : 'documents'}/${instance.documentId}`;
       const recipients = (users as Array<{ email: string; name?: string; username?: string }>).map((u) => u.email);

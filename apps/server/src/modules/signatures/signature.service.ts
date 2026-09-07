@@ -8,7 +8,7 @@ import { Repository } from 'typeorm';
 import { ApplicationFile } from '../applications/entities/application-file.entity';
 import { ApprovalRecord } from '../approvals/entities/approval-record.entity';
 
-const CJK_FONT_PATH = '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc';
+const CJK_FONT_PATH = '/usr/share/fonts/truetype/noto-cjk/NotoSansCJK-Bold-SC.ttf';
 const SEAL_COLOR = rgb(0.82, 0.10, 0.10);
 const SEAL_RADIUS = 56;
 
