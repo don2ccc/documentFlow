@@ -663,7 +663,7 @@ export class ApprovalEngineService {
     baseContent: string
   ): Promise<void> {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const log = (m: string) => console.log(`[sendCompletionEmail] ${m}`);
+    let userIds: string[] = [];
     try {
       const approverRows = await this.dataSource.query(
         `SELECT DISTINCT "actorId" AS id FROM approval_records WHERE "instanceId" = $1 AND "actorId" IS NOT NULL AND "actorId" <> 'system'`,
