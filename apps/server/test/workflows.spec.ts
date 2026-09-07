@@ -1,7 +1,7 @@
 import { WorkflowsService } from '../src/modules/workflows/workflows.service';
 
 describe('WorkflowsService.validateGraph', () => {
-  const service = new WorkflowsService({} as any, {} as any, {} as any, {} as any);
+  const service = new WorkflowsService({} as any, {} as any, {} as any, {} as any, {} as any);
 
   it('rejects graph without exactly one start and one end', () => {
     expect(() => service.validateGraph([{ id: 'n1', name: 'x', type: 'approval' }], [])).toThrow('必须包含且仅包含一个开始节点');
