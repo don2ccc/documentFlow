@@ -4,7 +4,8 @@ import {
   AuditOutlined, BellOutlined, TeamOutlined, TagsOutlined,
   ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined,
   SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined, HistoryOutlined,
-  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined
+  ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined,
+  EditOutlined
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
@@ -271,6 +272,7 @@ export function AppLayout() {
             <Dropdown
               menu={{
                 items: [
+                  { key: "my-signature", icon: <EditOutlined />, label: "我的签章", onClick: () => navigate("/my/signature") },
                   { key: "account-settings", icon: <SettingOutlined />, label: "帐号设置", onClick: () => navigate("/account-settings") },
                   { type: "divider" },
                   { key: "logout", icon: <LogoutOutlined />, label: "退出登录", onClick: () => { logout(); navigate("/login"); } }

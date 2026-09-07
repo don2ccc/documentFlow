@@ -7,10 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApplicationFile } from '../applications/entities/application-file.entity';
 import { ApprovalRecord } from '../approvals/entities/approval-record.entity';
+import { UserSignatureService } from './user-signature.service';
 
 const CJK_FONT_PATH = '/usr/share/fonts/truetype/noto-cjk/NotoSansCJK-Bold-SC.ttf';
 const SEAL_COLOR = rgb(0.82, 0.10, 0.10);
 const SEAL_RADIUS = 56;
+const STAMP_SIZE = 112; // user image stamp side length in pt
 
 @Injectable()
 export class SignatureService {
@@ -19,7 +21,8 @@ export class SignatureService {
 
   constructor(
     @InjectRepository(ApplicationFile) private readonly fileRepo: Repository<ApplicationFile>,
-    @InjectRepository(ApprovalRecord) private readonly recordRepo: Repository<ApprovalRecord>
+    @InjectRepository(ApprovalRecord) private readonly recordRepo: Repository<ApprovalRecord>,
+    private readonly userSig: UserSignatureService
   ) {}
 
   private async loadFont(): Promise<Buffer> {
@@ -41,19 +44,23 @@ export class SignatureService {
         return;
       }
       const signer = await this.findFinalApprover(instanceId);
+      // Try to load the final approver's personal signature image (if uploaded)
+      const userStamp = signer.id && signer.id !== '00000000-0000-0000-0000-000000000000'
+        ? await this.userSig.getRawForUser(signer.id)
+        : null;
       const signedAt = new Date();
       for (const f of pdfs) {
         try {
           const outPath = this.makeSignedPath(f.filePath);
           await fs.mkdir(path.dirname(outPath), { recursive: true });
-          await this.signPdf(f.filePath, outPath, signer.name, signedAt);
+          await this.signPdf(f.filePath, outPath, signer.name, signedAt, userStamp ?? undefined);
           await this.fileRepo.update({ id: f.id }, {
             signedPath: outPath,
             signedAt,
             signedBy: signer.id,
             signedByName: signer.name
           });
-          this.log.log(`signed ${f.fileName} -> ${outPath}`);
+          this.log.log(`signed ${f.fileName} -> ${outPath} (customStamp=${userStamp ? 'yes' : 'no'})`);
         } catch (e) {
           this.log.error(`failed to sign ${f.fileName}: ${(e as Error).message}`);
         }
@@ -87,8 +94,14 @@ export class SignatureService {
     return `${base}-signed${ext}`;
   }
 
-  /** Stamp a single PDF: draw a red round seal + signer info on the last page. */
-  private async signPdf(input: string, output: string, signerName: string, signedAt: Date): Promise<void> {
+  /** Stamp a single PDF: red round seal + signer info on the last page. */
+  private async signPdf(
+    input: string,
+    output: string,
+    signerName: string,
+    signedAt: Date,
+    userStamp?: { bytes: Buffer; mimeType: string }
+  ): Promise<void> {
     const fontBytes = await this.loadFont();
     const pdfBytes = await fs.readFile(input);
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
@@ -102,6 +115,60 @@ export class SignatureService {
     const cx = width - 90;
     const cy = 100;
 
+    if (userStamp) {
+      // User uploaded a personal signature image; draw it centered on the stamp spot.
+      let img;
+      try {
+        if (/png/i.test(userStamp.mimeType)) {
+          img = await pdfDoc.embedPng(userStamp.bytes);
+        } else if (/jpe?g/i.test(userStamp.mimeType)) {
+          img = await pdfDoc.embedJpg(userStamp.bytes);
+        } else {
+          throw new Error(`unsupported signature mime: ${userStamp.mimeType}`);
+        }
+      } catch (e) {
+        this.log.warn(`user signature image failed to embed, falling back to text stamp: ${(e as Error).message}`);
+        this.drawTextStamp(lastPage, font, cx, cy, signerName, signedAt);
+        const out = await pdfDoc.save();
+        await fs.writeFile(output, out);
+        return;
+      }
+      const dims = img.scaleToFit(STAMP_SIZE, STAMP_SIZE);
+      lastPage.drawImage(img, {
+        x: cx - dims.width / 2,
+        y: cy - dims.height / 2,
+        width: dims.width,
+        height: dims.height
+      });
+      // Small caption under the image showing who signed + date
+      const dateStr = signedAt.toISOString().slice(0, 10);
+      const cap = `${signerName}  ${dateStr}`;
+      const capSize = 7;
+      const capWidth = font.widthOfTextAtSize(cap, capSize);
+      lastPage.drawText(cap, {
+        x: cx - capWidth / 2,
+        y: cy - STAMP_SIZE / 2 - 10,
+        size: capSize,
+        font,
+        color: rgb(0.35, 0.35, 0.35)
+      });
+    } else {
+      this.drawTextStamp(lastPage, font, cx, cy, signerName, signedAt);
+    }
+
+    const out = await pdfDoc.save();
+    await fs.writeFile(output, out);
+  }
+
+  /** Default red round seal with embedded Chinese label, used when no personal signature uploaded. */
+  private drawTextStamp(
+    lastPage: any,
+    font: any,
+    cx: number,
+    cy: number,
+    signerName: string,
+    signedAt: Date
+  ): void {
     // Outer red circle (thicker line)
     lastPage.drawCircle({ x: cx, y: cy, size: SEAL_RADIUS, borderColor: SEAL_COLOR, borderWidth: 2.5 });
     // Inner thinner ring for the look of a real seal
@@ -155,8 +222,5 @@ export class SignatureService {
       font,
       color: SEAL_COLOR
     });
-
-    const out = await pdfDoc.save();
-    await fs.writeFile(output, out);
   }
 }
