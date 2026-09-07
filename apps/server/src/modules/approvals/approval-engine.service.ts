@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, In, Repository } from 'typeorm';
+import * as fs from 'fs';
 import {
   ApprovalMethod, AssigneeType, AuthUser, DocumentStatus, InstanceStatus, NodeType, RecordAction,
   TaskStatus, WorkflowStatus, WorkflowSnapshot
@@ -75,6 +76,7 @@ export class ApprovalEngineService {
         );
         await this.notify([instance.initiatorId], 'approval_result', '审批已通过', '您的文档审批已全部通过，已自动归档。', instance.documentId);
       }
+      void this.sendCompletionEmail(instance, 'approved', '[文档审批] 审批已通过', '您参与的审批已全部通过，已自动归档。');
       return;
     }
     if (node.type === NodeType.Start) {
@@ -148,6 +150,7 @@ export class ApprovalEngineService {
       }
       const rejectTpl = instance.targetType === 'application' ? `节点「${node.name}」驳回了您的申请项目。` : `节点「${node.name}」驳回了您的文档。`;
       await this.notify([instance.initiatorId], 'approval_result', '审批已驳回', rejectTpl, instance.documentId);
+      void this.sendCompletionEmail(instance, 'rejected', '[文档审批] 审批已驳回', `节点「${node.name}」驳回了该单据，请查看附件并联系发起人。`);
       return;
     }
     task.status = TaskStatus.Approved;
@@ -541,6 +544,7 @@ export class ApprovalEngineService {
       `节点「${node.name}」超时未处理，文档已退回给您。`,
       instance.documentId
     );
+    void this.sendCompletionEmail(instance, 'timeout', '[文档审批] 审批已超时退回', `节点「${node.name}」超时未处理，已自动退回发起人。`);
     await this.audit.log('system', 'approval:timeout-return', 'approval_instance', instanceId, { nodeName: node.name });
   }
 
@@ -650,6 +654,68 @@ export class ApprovalEngineService {
         targetPath: instance.targetType === 'application' ? 'applications' : 'documents'
       }
       : null;
+  }
+
+  private async sendCompletionEmail(
+    instance: ApprovalInstance,
+    kind: 'approved' | 'rejected' | 'timeout',
+    subject: string,
+    baseContent: string
+  ): Promise<void> {
+    try {
+      const approverRows = await this.dataSource.query(
+        `SELECT DISTINCT "actorId" AS id FROM approval_records WHERE "instanceId" = $1 AND "actorId" IS NOT NULL AND "actorId" <> 'system'`,
+        [instance.id]
+      );
+      const approverIds = (approverRows as Array<{ id: string }>).map((r) => r.id);
+      const userIds = [...new Set([instance.initiatorId, ...approverIds])];
+      if (userIds.length === 0) return;
+      const users = await this.dataSource.query(
+        `SELECT id, email, username, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
+        [userIds]
+      );
+      if ((users as Array<unknown>).length === 0) return;
+      const fileRows = instance.targetType === 'application'
+        ? await this.dataSource.query(
+            `SELECT id, "fileName" AS "fileName", "filePath" AS "filePath" FROM application_files WHERE "applicationId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
+            [instance.documentId]
+          )
+        : await this.dataSource.query(
+            `SELECT id, "fileName", "filePath" FROM document_versions WHERE "documentId" = $1 ORDER BY "versionNo" ASC, "createdAt" ASC`,
+            [instance.documentId]
+          );
+      const seen = new Set<string>();
+      const attachments: Array<{ filename: string; path: string }> = [];
+      for (const f of fileRows as Array<{ fileName: string; filePath: string }>) {
+        if (!f.filePath || !fs.existsSync(f.filePath)) continue;
+        let name = f.fileName;
+        let suffix = 1;
+        while (seen.has(name)) {
+          const dot = f.fileName.lastIndexOf('.');
+          const ext = dot >= 0 ? f.fileName.slice(dot) : '';
+          const base = dot >= 0 ? f.fileName.slice(0, dot) : f.fileName;
+          name = `${base} (${suffix})${ext}`;
+          suffix += 1;
+        }
+        seen.add(name);
+        attachments.push({ filename: name, path: f.filePath });
+      }
+      const link = `${process.env.PUBLIC_BASE_URL ?? 'https://localhost:8443'}/${instance.targetType === 'application' ? 'applications' : 'documents'}/${instance.documentId}`;
+      const recipients = (users as Array<{ email: string; name?: string; username?: string }>).map((u) => u.email);
+      const attachNote = attachments.length === 0
+        ? ''
+        : `\n本邮件包含 ${attachments.length} 份原始附件，请查收。`;
+      const statusLabel = kind === 'approved' ? '已通过' : kind === 'rejected' ? '已驳回' : '已超时退回';
+      for (const u of users as Array<{ email: string; name?: string; username?: string }>) {
+        const recipientName = u.name || u.username || u.email;
+        const text = `Hi, 尊敬的${recipientName}：\n\n${baseContent}\n\n审批结果：${statusLabel}。${attachNote}\n\n查看详情：${link}\n\nSPO 邮件系统推送`;
+        const html = `<p>${this.escapeHtml(text).replace(/\n/g, '<br>')}</p>`;
+        await this.mailer.sendWithAttachments(u.email, subject, text, html, attachments);
+      }
+    } catch (err) {
+      const Logger = (await import('@nestjs/common')).Logger;
+      new Logger('ApprovalEngineService').error(`sendCompletionEmail failed: ${(err as Error)?.message ?? err}`);
+    }
   }
 
   private async notify(userIds: string[], type: string, title: string, content: string, relatedId?: string) {
