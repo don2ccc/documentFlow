@@ -38,7 +38,8 @@ function makeEngine(overrides: Partial<Record<string, any>> = {}) {
     engine: new ApprovalEngineService(
       repos.instance as any, repos.task as any, repos.record as any, repos.notification as any,
       repos.documents as any, repos.applications as any, repos.workflows as any, repos.dataSource as any, repos.audit as any,
-      repos.mailer as any
+      repos.mailer as any,
+      { signApplicationFiles: async () => {} } as any
     ),
     repos
   };

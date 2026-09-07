@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { ApplicationFile } from '../applications/entities/application-file.entity';
 import { AuthUser } from '@document-flow/shared';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { CurrentUser } from '../../auth/current-user.decorator';
 
 @Controller('applications')
 export class SignatureController {

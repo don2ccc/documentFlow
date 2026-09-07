@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -131,12 +131,15 @@ export class SignatureService {
       color: SEAL_COLOR
     });
 
-    // Small star under label
-    lastPage.drawText('\u2605', {
-      x: cx - 4,
+    // Small star under label (using the same CJK font which includes basic symbols)
+    const star = '\u2605';
+    const starSize = 10;
+    const starWidth = font.widthOfTextAtSize(star, starSize);
+    lastPage.drawText(star, {
+      x: cx - starWidth / 2,
       y: cy - 18,
-      size: 10,
-      font: StandardFonts.HelveticaBold,
+      size: starSize,
+      font,
       color: SEAL_COLOR
     });
 
