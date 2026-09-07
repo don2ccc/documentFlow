@@ -671,7 +671,7 @@ export class ApprovalEngineService {
       );
       const approverIds = (approverRows as Array<{ id: string }>).map((r) => r.id).filter((id) => UUID_RE.test(id));
       const rawUserIds = [instance.initiatorId, ...approverIds];
-      const userIds = [...new Set(rawUserIds.filter((id) => UUID_RE.test(id)))];
+      userIds = [...new Set(rawUserIds.filter((id) => UUID_RE.test(id)))];
       if (userIds.length === 0) return;
       const users = await this.dataSource.query(
         `SELECT id, email, username, name FROM users WHERE id = ANY($1) AND email IS NOT NULL AND email <> ''`,
