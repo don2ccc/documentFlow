@@ -9,6 +9,7 @@ export class Application {
   @Column({ type: 'uuid', nullable: true }) categoryId!: string | null;
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true }) amount!: string | null;
   @Column({ type: 'uuid' }) ownerId!: string;
+  @Column({ type: 'varchar', length: 12, unique: true }) applicationNo!: string;
   @Column({ type: 'varchar', default: DocumentStatus.Draft }) status!: DocumentStatus;
   @Column({ type: 'uuid', nullable: true }) currentInstanceId!: string | null;
   @Column({ type: 'uuid', nullable: true }) defaultWorkflowId!: string | null;

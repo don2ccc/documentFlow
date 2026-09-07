@@ -89,9 +89,9 @@ export function ApplicationQueryPage() {
   const columns = [
     {
       title: '申请单号',
-      dataIndex: 'id',
+      dataIndex: 'applicationNo',
       width: 140,
-      render: (id: string) => <span style={{ fontFamily: 'monospace' }}>{id.slice(0, 8).toUpperCase()}</span>
+      render: (v: string | null) => <span style={{ fontFamily: 'monospace' }}>{v || '-'}</span>
     },
     {
       title: '标题',

@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.15",
-  "commit": "3be2821",
+  "version": "v1.0.16",
+  "commit": "49cf5df",
   "branch": "feature-billy",
-  "builtAt": "2026-09-07T13:59:31.143Z",
-  "subject": "chore(release): v1.0.14"
+  "builtAt": "2026-09-07T14:51:16.296Z",
+  "subject": "chore(release): v1.0.15"
 }

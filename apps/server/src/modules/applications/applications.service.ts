@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+function _appNoPrefix(): string { const d = new Date(); return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); }
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { execFile } from 'child_process';
@@ -42,6 +43,23 @@ export class ApplicationsService {
     private readonly audit: AuditService
   ) {}
 
+
+  private async generateApplicationNo(datePrefix: string): Promise<string> {
+    return await this.dataSource.transaction(async (manager) => {
+      const lockKey = parseInt(datePrefix, 10);
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+      const rows = await manager.query(
+        "SELECT COALESCE(MAX(CAST(SUBSTRING(\"applicationNo\" FROM 9 FOR 4) AS INTEGER)), 0) AS max_seq " +
+        "FROM applications WHERE \"applicationNo\" LIKE $1",
+        [datePrefix + '%']
+      );
+      const next = Number((rows[0] && rows[0].max_seq) || 0) + 1;
+      if (next > 9999) throw new Error('今日申请单号已用完');
+      return datePrefix + String(next).padStart(4, '0');
+    });
+  }
+
+  private todayPrefix(): string { const d = new Date(); return d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); }
   private validateFile(file: Express.Multer.File) {
     if (!file) throw new BadRequestException('请上传文件');
     if (file.size > MAX_FILE_SIZE) throw new BadRequestException('文件超过 20MB');
@@ -61,6 +79,7 @@ export class ApplicationsService {
         categoryId: dto.categoryId ?? null,
         amount: dto.amount ?? null,
         ownerId: user.id,
+        applicationNo: await this.generateApplicationNo(this.todayPrefix()),
         status: DocumentStatus.Draft,
         defaultWorkflowId: dto.workflowId ?? null
       })
@@ -129,6 +148,7 @@ export class ApplicationsService {
     }
     const result: ApplicationListItem[] = items.map((i) => ({
       id: i.id,
+      applicationNo: (i as any).applicationNo ?? null,
       title: i.title,
       status: i.status,
       ownerId: i.ownerId,
@@ -160,6 +180,7 @@ export class ApplicationsService {
     }
     return {
       id: app.id,
+      applicationNo: (app as any).applicationNo ?? null,
       title: app.title,
       description: app.description,
       categoryId: app.categoryId,
@@ -384,7 +405,8 @@ export class ApplicationsService {
         currentNodeName = nodes.find((n) => n.id === inst.currentNodeId)?.name ?? null;
       }
       return {
-        id: r.id, title: r.title, status: r.status, ownerId: r.ownerId,
+        id: r.id,
+      applicationNo: (r as any).applicationNo ?? null, title: r.title, status: r.status, ownerId: r.ownerId,
         ownerName: ownerNameMap.get(r.ownerId) ?? null,
         categoryId: r.categoryId, categoryName: r.categoryId ? categoryNameMap.get(r.categoryId) ?? null : null,
         fileCount: fileMap.get(r.id)?.count ?? 0,

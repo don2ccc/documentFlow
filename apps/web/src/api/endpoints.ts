@@ -194,6 +194,7 @@ export interface ApplicationFileInfo {
 }
 export interface ApplicationListItem {
   id: string;
+  applicationNo: string | null;
   title: string;
   status: string;
   ownerId: string;
