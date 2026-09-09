@@ -68,46 +68,64 @@ export class ApplicationsService {
     file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
   }
 
-  async create(user: AuthUser, files: Express.Multer.File[] | undefined, dto: CreateApplicationDto) {
+    async create(user: AuthUser, files: Express.Multer.File[] | undefined, dto: CreateApplicationDto) {
     const incoming = files ?? [];
     if (incoming.length === 0) throw new BadRequestException('请至少上传一个文件');
     for (const f of incoming) this.validateFile(f);
-    const app = await this.appRepo.save(
-      this.appRepo.create({
-        title: dto.title,
-        description: dto.description ?? null,
-        categoryId: dto.categoryId ?? null,
-        amount: dto.amount ?? null,
-        ownerId: user.id,
-        applicationNo: await this.generateApplicationNo(this.todayPrefix()),
-        status: DocumentStatus.Draft,
-        defaultWorkflowId: dto.workflowId ?? null
-      })
-    );
-    for (const f of incoming) {
-      const checksum = sha1(fs.readFileSync(f.path));
-      await this.fileRepo.save(
-        this.fileRepo.create({
-          applicationId: app.id,
-          fileName: f.originalname,
-          mimeType: f.mimetype,
-          size: f.size,
-          filePath: f.path,
-          checksum,
-          versionNo: 1,
-          uploadedBy: user.id
+    const datePrefix = this.todayPrefix();
+    // Acquire the per-day advisory lock and INSERT in the SAME transaction so the
+    // applicationNo we computed cannot collide with a concurrent create.
+    const created = await this.dataSource.transaction(async (manager) => {
+      const lockKey = parseInt(datePrefix, 10);
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+      const rows = await manager.query(
+        "SELECT COALESCE(MAX(CAST(SUBSTRING(\"applicationNo\" FROM 9 FOR 4) AS INTEGER)), 0) AS max_seq " +
+        "FROM applications WHERE \"applicationNo\" LIKE $1",
+        [datePrefix + '%']
+      );
+      const next = Number((rows[0] && rows[0].max_seq) || 0) + 1;
+      if (next > 9999) throw new Error('今日申请单号已用完');
+      const newNo = datePrefix + String(next).padStart(4, '0');
+      const appRepoTx = manager.getRepository(Application);
+      const fileRepoTx = manager.getRepository(ApplicationFile);
+      const app = await appRepoTx.save(
+        appRepoTx.create({
+          title: dto.title,
+          description: dto.description ?? null,
+          categoryId: dto.categoryId ?? null,
+          amount: dto.amount ?? null,
+          ownerId: user.id,
+          applicationNo: newNo,
+          status: DocumentStatus.Draft,
+          defaultWorkflowId: dto.workflowId ?? null
         })
       );
-    }
-    await this.audit.log(user.id, 'application:create', 'application', app.id, { title: app.title, fileCount: incoming.length });
+      for (const f of incoming) {
+        const checksum = sha1(fs.readFileSync(f.path));
+        await fileRepoTx.save(
+          fileRepoTx.create({
+            applicationId: app.id,
+            fileName: f.originalname,
+            mimeType: f.mimetype,
+            size: f.size,
+            filePath: f.path,
+            checksum,
+            versionNo: 1,
+            uploadedBy: user.id
+          })
+        );
+      }
+      return app;
+    });
+    await this.audit.log(user.id, 'application:create', 'application', created.id, { title: created.title, fileCount: incoming.length });
     if (dto.workflowId) {
-      const instance = await this.engine.submit(dto.workflowId, app.id, 'application', user.id, {});
-      app.status = DocumentStatus.InApproval;
-      app.currentInstanceId = instance.id;
-      await this.appRepo.save(app);
-      await this.audit.log(user.id, 'application:submit', 'application', app.id, { workflowId: dto.workflowId });
+      const instance = await this.engine.submit(dto.workflowId, created.id, 'application', user.id, {});
+      created.status = DocumentStatus.InApproval;
+      created.currentInstanceId = instance.id;
+      await this.appRepo.save(created);
+      await this.audit.log(user.id, 'application:submit', 'application', created.id, { workflowId: dto.workflowId });
     }
-    return this.getById(user, app.id);
+    return this.getById(user, created.id);
   }
 
   async list(user: AuthUser, query: { status?: string; keyword?: string; page?: number; pageSize?: number; ownerOnly?: boolean }) {

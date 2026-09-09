@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, Empty, List, message } from 'antd';
 import { api } from '../api/client';
+import { formatDateMinute } from '../utils/datetime';
 
 export function NotificationsPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -43,7 +44,7 @@ export function NotificationsPage() {
                     {!item.readAt && <Badge status="processing" />} {item.title}
                   </span>
                 }
-                description={`${item.content} · ${item.createdAt.slice(0, 16).replace('T', ' ')}`}
+                description={`${item.content} · ${formatDateMinute(item.createdAt)}`}
               />
             </List.Item>
           )}

@@ -27,7 +27,6 @@ import { DatabaseManagementPage } from './pages/admin/DatabaseManagementPage';
 import { DormitoryPage } from './pages/admin/DormitoryPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
-import { MySignaturePage } from './pages/MySignaturePage';
 
 export function App() {
   return (
@@ -47,7 +46,6 @@ export function App() {
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/account-settings" element={<AccountSettingsPage />} />
-                <Route path="/my/signature" element={<MySignaturePage />} />
                 <Route path="/admin/users" element={<UsersPage />} />
                 <Route path="/admin/roles" element={<RolesPage />} />
                 <Route path="/admin/categories" element={<CategoriesPage />} />

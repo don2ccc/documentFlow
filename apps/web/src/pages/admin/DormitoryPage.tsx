@@ -11,6 +11,7 @@ import {
   dormitoryApi,
   downloadBlob
 } from "../../api/endpoints";
+import { formatDateMinute } from "../../utils/datetime";
 
 const ROOM_TYPES: RoomType[] = ["四人间", "双人间", "单人间"];
 const BED_STATUSES: BedStatus[] = ["空闲", "已住", "维修中", "禁用"];
@@ -148,7 +149,7 @@ function BuildingsTab({ buildings, onChanged }: { buildings: Building[]; onChang
           { title: "地址", dataIndex: "address" },
           { title: "总层数", dataIndex: "totalFloors", width: 100 },
           { title: "备注", dataIndex: "notes" },
-          { title: "创建时间", dataIndex: "createdAt", width: 180, render: (v: string) => v?.slice(0, 16).replace("T", " ") },
+          { title: "创建时间", dataIndex: "createdAt", width: 180, render: (v: string) => formatDateMinute(v) },
           { title: "操作", width: 140, render: (_: unknown, b: Building) => (
             <Space>
               <Button size="small" type="link" icon={<EditOutlined />} onClick={() => start(b)}>编辑</Button>

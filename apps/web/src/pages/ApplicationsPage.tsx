@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { applicationsApi, ApplicationListItem, Paged } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
 import { StatusTag } from '../components/StatusTag';
+import { formatDateMinute } from '../utils/datetime';
+
 import { UploadApplicationModal } from '../components/UploadApplicationModal';
 
 const EMPTY_STATS = { pending: 0, approved: 0, rejected: 0 };
@@ -99,7 +101,7 @@ export function ApplicationsPage() {
       width: 110,
       render: (v: number) => v >= 1024 * 1024 ? `${(v / (1024 * 1024)).toFixed(1)} MB` : `${(v / 1024).toFixed(1)} KB`
     },
-    { title: '上传时间', dataIndex: 'createdAt', width: 180, render: (v: string) => v.slice(0, 16).replace('T', ' ') },
+    { title: '上传时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateMinute(v) },
     { title: '创建人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || '-' },
     { title: '状态', dataIndex: 'status', width: 100, render: (v: string) => <StatusTag status={v} /> },
     {

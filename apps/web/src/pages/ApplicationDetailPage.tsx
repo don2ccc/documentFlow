@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { Button, Card, Col, Descriptions, Input, Modal, Row, Select, Space, Spin, Table, Tag, message } from 'antd';
 import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -9,6 +10,8 @@ import { applicationsApi, ApplicationDetail, ApprovalTaskAccess, approvalsApi, U
 import { useAuth } from '../auth/AuthContext';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
 import { StatusTag } from '../components/StatusTag';
+import { formatDateMinute, formatDateTime } from '../utils/datetime';
+
 
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
@@ -77,6 +80,7 @@ export function ApplicationDetailPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ fileId: string; fileName: string } | null>(null);
   const [previewError, setPreviewError] = useState('');
   const [officeBlob, setOfficeBlob] = useState<Blob | null>(null);
@@ -92,9 +96,9 @@ export function ApplicationDetailPage() {
   const [transferLoading, setTransferLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const canDownload = permissions.includes('document:download');
-  const canUpload = permissions.includes('document:upload');
   const isOwner = !!user && !!detail && detail.ownerId === user.id;
+  const canDownload = permissions.includes('document:download') || isOwner;
+  const canUpload = permissions.includes('document:upload');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -232,7 +236,9 @@ export function ApplicationDetailPage() {
   const loadPreview = async (fileId: string, fileName: string) => {
     setPreviewOpen(true);
     setPreviewLoading(true);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewFile(null);
+    setPreviewUrl(null);
     setOfficeBlob(null);
     setOfficeMime('');
     setPreviewTarget({ fileId, fileName });
@@ -251,7 +257,9 @@ export function ApplicationDetailPage() {
         setOfficeBlob(blob);
       } else {
         const file = new File([new Uint8Array(res.data)], 'preview.pdf', { type: 'application/pdf' });
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
         setPreviewFile(file);
+        setPreviewUrl(URL.createObjectURL(file));
       }
     } catch (e: any) {
       const status = e?.response?.status;
@@ -313,6 +321,7 @@ export function ApplicationDetailPage() {
   }
 
   return (
+    <PageErrorBoundary>
     <div>
       <Card
         title={
@@ -341,8 +350,8 @@ export function ApplicationDetailPage() {
           <Descriptions.Item label="状态"><StatusTag status={detail.status} /></Descriptions.Item>
           <Descriptions.Item label="创建人">{detail.ownerName || '-'}</Descriptions.Item>
           <Descriptions.Item label="文件数">{detail.files.length}</Descriptions.Item>
-          <Descriptions.Item label="创建时间">{detail.createdAt.slice(0, 19).replace('T', ' ')}</Descriptions.Item>
-          <Descriptions.Item label="最近更新">{detail.updatedAt.slice(0, 19).replace('T', ' ')}</Descriptions.Item>
+          <Descriptions.Item label="创建时间">{formatDateTime(detail.createdAt)}</Descriptions.Item>
+          <Descriptions.Item label="最近更新">{formatDateTime(detail.updatedAt)}</Descriptions.Item>
           <Descriptions.Item label="说明" span={3}>
             {detail.description || <span style={{ color: '#bbb' }}>-</span>}
           </Descriptions.Item>
@@ -387,7 +396,7 @@ export function ApplicationDetailPage() {
         ) : previewFile ? (
           <>
             <div style={{ maxHeight: '70vh', overflow: 'auto', textAlign: 'center' }}>
-              <Document file={previewFile} onLoadSuccess={({ numPages: n }) => setNumPages(n)} onLoadError={(err) => setPreviewError("PDF 解析失败：" + (err?.message || ''))}>
+              <Document file={previewUrl ? { url: previewUrl } : null} options={{ cMapUrl: '/cmaps/', standardFontDataUrl: '/standard_fonts/' }} onLoadSuccess={({ numPages: n }) => setNumPages(n)} onLoadError={(err) => setPreviewError("PDF 解析失败：" + (err?.message || ''))}>
                 <Page pageNumber={page} width={700} renderTextLayer={false} renderAnnotationLayer={false} />
               </Document>
             </div>
@@ -436,5 +445,33 @@ export function ApplicationDetailPage() {
         )}
       </Modal>
     </div>
+    </PageErrorBoundary>
   );
+}
+
+class PageErrorBoundary extends React.Component<{ children?: React.ReactNode }, { error: any; info: any }> {
+  constructor(props: { children?: React.ReactNode }) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    this.setState({ info: info as any });
+    try { console.error('[ApplicationDetailPage] render error:', error, info); } catch (_) {}
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24 }}>
+          <h3 style={{ color: '#c00' }}>页面渲染错误</h3>
+          <pre style={{ whiteSpace: 'pre-wrap', background: '#fff5f5', padding: 12, border: '1px solid #ffd6d6' }}>
+{String(this.state.error && (this.state.error.stack || this.state.error.message || this.state.error))}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

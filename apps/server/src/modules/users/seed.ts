@@ -8,6 +8,7 @@ import { User } from './entities/user.entity';
 const PERMISSIONS = [
   ['上传文档', 'document:upload'],
   ['预览文档', 'document:preview'],
+  ['下载文档', 'document:download'],
   ['处理审批', 'approval:handle'],
   ['管理用户', 'user:manage'],
   ['管理角色', 'role:manage'],

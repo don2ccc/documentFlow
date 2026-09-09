@@ -4,6 +4,8 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { applicationsApi, categoriesApi, ApplicationQueryItem, CategoryItem, Paged } from '../api/endpoints';
 import { StatusTag } from '../components/StatusTag';
+import { formatDateMinute } from '../utils/datetime';
+
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: '草稿' },
@@ -126,7 +128,7 @@ export function ApplicationQueryPage() {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 170,
-      render: (v: string) => v.slice(0, 16).replace('T', ' ')
+      render: (v: string) => formatDateMinute(v)
     },
     {
       title: '操作',

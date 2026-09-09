@@ -3,6 +3,8 @@ import { Card, Col, Row, Statistic, Table } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { dashboardApi } from '../api/endpoints';
 import { StatusTag } from '../components/StatusTag';
+import { formatDateMinute } from '../utils/datetime';
+
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -17,7 +19,7 @@ export function DashboardPage() {
   const columns = [
     { title: '申请项目', dataIndex: 'title', render: (v: string, r: any) => <a onClick={() => navigate(`/applications/${r.id}`)}>{v}</a> },
     { title: '状态', dataIndex: 'status', width: 120, render: (v: string) => <StatusTag status={v} /> },
-    { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => v.slice(0, 16).replace('T', ' ') }
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateMinute(v) }
   ];
 
   return (

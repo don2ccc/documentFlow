@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Col, Descriptions, Modal, Row, Space, Spin, Tag, Upload, message } from 'antd';
 import { useParams } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -9,6 +9,8 @@ import { documentsApi, DocumentDetail } from '../api/endpoints';
 import { useAuth } from '../auth/AuthContext';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
 import { StatusTag } from '../components/StatusTag';
+import { formatDateMinute } from '../utils/datetime';
+
 import { SubmitFlowModal } from '../components/SubmitFlowModal';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
@@ -81,12 +83,14 @@ export function DocumentDetailPage() {
   const { user, permissions } = useAuth();
   const previewDataRef = useRef<Uint8Array | null>(null);
 
-  const canPreview = permissions.includes('document:preview');
-  const canDownload = permissions.includes('document:download');
-  const canUpload = permissions.includes('document:upload');
   const isOwner = !!user && !!detail && detail.ownerId === user.id;
+  const canPreview = permissions.includes('document:preview') || isOwner;
+  const canDownload = permissions.includes('document:download') || isOwner;
+  const canUpload = permissions.includes('document:upload');
 
-  const releasePreviewUrl = () => {};
+  const releasePreviewUrl = (url) => { if (url) URL.revokeObjectURL(url); };
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, []);
 
   const downloadVersion = async (docId: string, versionId: string, fileName: string) => {
     if (!canDownload) {
@@ -133,6 +137,9 @@ export function DocumentDetailPage() {
         return;
       }
       const file = new File([new Uint8Array(res.data)], 'preview.pdf', { type: 'application/pdf' });
+      const nextUrl = URL.createObjectURL(file);
+      releasePreviewUrl(previewUrl);
+      setPreviewUrl(nextUrl);
       setPreview({ kind: 'ok', file });
     } catch (e: any) {
       const status = e?.response?.status;
@@ -324,7 +331,7 @@ export function DocumentDetailPage() {
               )}
               {canPreview && preview.kind === 'ok' && (
                 <>
-                  <Document file={preview.file} onLoadSuccess={({ numPages: n }) => setNumPages(n)}>
+                  <Document file={previewUrl ? { url: previewUrl } : null} options={{ cMapUrl: '/cmaps/', standardFontDataUrl: '/standard_fonts/' }} onLoadSuccess={({ numPages: n }) => setNumPages(n)} onLoadError={(err) => setPreview({ kind: 'failed', message: 'PDF 解析失败：' + (err?.message || '') })}>
                     <Page pageNumber={page} width={700} renderTextLayer={false} renderAnnotationLayer={false} />
                   </Document>
                   {numPages > 1 && (
@@ -345,7 +352,7 @@ export function DocumentDetailPage() {
                 <Descriptions.Item label="分类">{detail.categoryId ? '已分类' : '未分类'}</Descriptions.Item>
                 <Descriptions.Item label="金额">{detail.amount ? `¥ ${detail.amount}` : '-'}</Descriptions.Item>
                 <Descriptions.Item label="说明">{detail.description || '-'}</Descriptions.Item>
-                <Descriptions.Item label="上传时间">{detail.createdAt.slice(0, 16).replace('T', ' ')}</Descriptions.Item>
+                <Descriptions.Item label="上传时间">{formatDateMinute(detail.createdAt)}</Descriptions.Item>
               </Descriptions>
             </Card>
             <Card size="small" title="版本历史" className="app-doc-right-card" style={{ marginTop: 16 }}>
