@@ -151,6 +151,8 @@ export const usersApi = {
   update: (id: string, data: Record<string, unknown>) => api.patch(`/users/${id}`, data).then((r) => r.data),
   // 管理员审批待激活账号（激活 + 生成密码 + 发送邮件）
   approve: (id: string) => api.post<{ user: UserItem; initialPassword: string; emailSent: boolean }>(`/users/${id}/approve`).then((r) => r.data),
+  // 轻量查询活跃用户列表（审批人选择器等场景使用，不需 user:manage）
+  lookup: () => api.get<Array<{ id: string; username: string; name: string; departmentId: string | null; status: string }>>('/users/lookup').then((r) => r.data),
   // 当前登录用户自助接口
   getMe: () => api.get<UserItem>('/users/me').then((r) => r.data),
   updateMe: (data: { employeeNo?: string | null; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; departmentId?: string | null }) =>

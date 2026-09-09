@@ -197,6 +197,18 @@ export class UsersService {
     return out;
   }
 
+
+  // Approver picker: only id / username / name / departmentId / status.
+  // Open to any logged-in user; only exposes Active accounts.
+  async lookup(): Promise<Array<{ id: string; username: string; name: string; departmentId: string | null; status: string }>> {
+    const rows = await this.repo.find({
+      where: { status: UserStatus.Active },
+      select: { id: true, username: true, name: true, departmentId: true, status: true },
+      order: { username: "ASC" }
+    });
+    return rows.map((u) => ({ id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, status: u.status }));
+  }
+
   private toBrief(u: User): UserBriefDto {
     return { id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, email: u.email ?? null, directSupervisor: u.directSupervisor ?? null, workshopId: u.workshopId ?? null, position: u.position ?? null, status: u.status, roles: u.roles?.map((r) => r.code) ?? [], roleIds: u.roles?.map((r) => r.id) ?? [] };
   }

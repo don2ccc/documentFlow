@@ -35,8 +35,8 @@ export function WorkflowEditPage() {
 
   useEffect(() => {
     load();
-    usersApi.list({ pageSize: 100 }).then((r) =>
-      setUsers((r.items ?? []).map((u: any) => ({ id: u.id, username: u.username, name: u.name })))
+    usersApi.lookup().then((items) =>
+      setUsers(items.map((u) => ({ id: u.id, username: u.username, name: u.name })))
     ).catch(() => undefined);
   }, [id]);
 

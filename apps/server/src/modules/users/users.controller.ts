@@ -27,6 +27,12 @@ export class UsersController {
     return this.users.create(dto);
   }
 
+  // 轻量查询：仅返回活跃用户的 id/username/name/departmentId/status，用于审批人选择器等场景，不需 user:manage
+  @Get('lookup')
+  lookup() {
+    return this.users.lookup();
+  }
+
   // 当前登录用户获取自己的完整资料
   @Get('me')
   getMe(@CurrentUser() user: { id: string }) {
