@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons';
 import { databaseApi, DatabaseBackup, DatabaseInfo } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
-import { api } from '../../api/client';
+import { api, getAuthToken } from "../../api/client";
 
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
@@ -88,7 +88,7 @@ export function DatabaseManagementPage() {
 
   const onDownload = useCallback((filename: string) => {
     // 用 token 拼出可下载的 URL
-    const token = localStorage.getItem('token') ?? '';
+    const token = getAuthToken() ?? "";
     const url = `/api/database/backups/${encodeURIComponent(filename)}/download`;
     // 走 fetch + blob 触发下载，避免浏览器拦截 Authorization header
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })

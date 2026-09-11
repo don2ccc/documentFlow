@@ -142,7 +142,6 @@ export function UsersPage() {
     { title: '用户名', dataIndex: 'username' },
     { title: '邮箱', dataIndex: 'email' },
     { title: '直属领导', dataIndex: 'directSupervisor' },
-    { title: '科室', dataIndex: 'workshopId', render: (v: string, r: UserItem) => workshopNameOf(v, r) },
     { title: '职位', dataIndex: 'position' },
     { title: '角色', dataIndex: 'roles', render: (v: string[]) => v.map((r) => <span key={r}>{r}</span>) },
     { title: '状态', dataIndex: 'status', render: (v: string) => <StatusTag status={v} /> },
@@ -202,7 +201,6 @@ export function UsersPage() {
           <Form.Item name="employeeNo" label="工号"><Input /></Form.Item>
           <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入合法邮箱' }]}><Input /></Form.Item>
           <Form.Item name="directSupervisor" label="直属领导"><Input /></Form.Item>
-          <Form.Item name="workshopId" label="科室"><TreeSelect treeData={workshops} fieldNames={{ label: 'name', value: 'id' }} allowClear /></Form.Item>
           <Form.Item name="position" label="职位信息"><Input /></Form.Item>
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />
@@ -220,7 +218,6 @@ export function UsersPage() {
           <Form.Item name="employeeNo" label="工号"><Input /></Form.Item>
           <Form.Item name="email" label="邮箱"><Input /></Form.Item>
           <Form.Item name="directSupervisor" label="直属领导"><Input /></Form.Item>
-          <Form.Item name="workshopId" label="科室"><TreeSelect treeData={workshops} fieldNames={{ label: 'name', value: 'id' }} allowClear /></Form.Item>
           <Form.Item name="position" label="职位信息"><Input /></Form.Item>
           <Form.Item name="departmentId" label="部门">
             <TreeSelect treeData={depts} fieldNames={{ label: 'name', value: 'id' }} allowClear />

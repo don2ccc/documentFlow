@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ApartmentOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { workshopsApi, WorkshopFlatItem, usersApi, UserItem, departmentsApi, DepartmentFlatItem } from '../../api/endpoints';
+import { ClusterOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { departmentsApi, DepartmentFlatItem, workshopsApi, WorkshopFlatItem, usersApi, UserItem } from '../../api/endpoints';
 
-type FormValues = { name: string; departmentId?: string | null; parentId?: string | null; managerId?: string | null };
+type FormValues = { name: string; parentId?: string | null; managerId?: string | null; departmentId?: string | null };
 
 interface Row extends WorkshopFlatItem {
   parentName?: string;
@@ -37,15 +37,14 @@ export function WorkshopsPage() {
         departmentsApi.list()
       ]);
       const userMap = new Map((userList.items ?? []).map((u) => [u.id, u.name] as const));
-      const nameMap = new Map(list.map((w) => [w.id, w.name] as const));
-      const deptMap = new Map(deptList.map((d) => [d.id, d.name] as const));
-      setDepartments(deptList);
+      const wsNameMap = new Map(list.map((w) => [w.id, w.name] as const));
+      const deptNameMap = new Map(deptList.map((d) => [d.id, d.name] as const));
       setRows(
         list.map((w) => ({
           ...w,
-          parentName: w.parentId ? nameMap.get(w.parentId) ?? '-' : undefined,
+          parentName: w.parentId ? wsNameMap.get(w.parentId) ?? '-' : undefined,
           managerName: w.managerId ? userMap.get(w.managerId) ?? '-' : undefined,
-          departmentName: w.departmentId ? deptMap.get(w.departmentId) ?? '-' : undefined
+          departmentName: w.departmentId ? deptNameMap.get(w.departmentId) ?? '-' : undefined
         }))
       );
     } finally {
@@ -56,6 +55,7 @@ export function WorkshopsPage() {
   useEffect(() => {
     load();
     usersApi.list({ pageSize: 1000 }).then((p) => setUsers(p.items ?? [])).catch(() => undefined);
+    departmentsApi.list().then(setDepartments).catch(() => undefined);
   }, [load]);
 
   const openCreate = () => {
@@ -67,7 +67,12 @@ export function WorkshopsPage() {
   const openEdit = (r: Row) => {
     setEditing(r);
     form.resetFields();
-    form.setFieldsValue({ name: r.name, departmentId: r.departmentId ?? undefined, parentId: r.parentId ?? undefined, managerId: r.managerId ?? undefined });
+    form.setFieldsValue({
+      name: r.name,
+      parentId: r.parentId ?? undefined,
+      managerId: r.managerId ?? undefined,
+      departmentId: r.departmentId ?? undefined
+    });
     setOpen(true);
   };
 
@@ -78,7 +83,12 @@ export function WorkshopsPage() {
     } catch {
       return;
     }
-    const payload = { name: values.name, parentId: values.parentId ?? null, managerId: values.managerId ?? null, departmentId: values.departmentId ?? null };
+    const payload = {
+      name: values.name,
+      parentId: values.parentId ?? null,
+      managerId: values.managerId ?? null,
+      departmentId: values.departmentId ?? null
+    };
     setSubmitting(true);
     try {
       if (editing) await workshopsApi.update(editing.id, payload);
@@ -109,8 +119,8 @@ export function WorkshopsPage() {
   const columns: ColumnsType<Row> = useMemo(
     () => [
       { title: '科室名称', dataIndex: 'name', key: 'name' },
-      { title: '所属部门', dataIndex: 'departmentName', key: 'departmentName', render: (v?: string) => v ?? <Tag color="default">未指定</Tag> },
       { title: '上级科室', dataIndex: 'parentName', key: 'parentName', render: (v?: string) => v ?? <Tag color="default">顶级</Tag> },
+      { title: '所属部门', dataIndex: 'departmentName', key: 'departmentName', render: (v?: string) => v ?? '-' },
       { title: '科室负责人', dataIndex: 'managerName', key: 'managerName', render: (v?: string) => v ?? '-' },
       {
         title: '操作',
@@ -123,7 +133,7 @@ export function WorkshopsPage() {
             </Button>
             <Popconfirm
               title={`删除科室「${r.name}」？`}
-              description="若该科室下仍有子科室或用户，将无法删除。"
+              description="若该科室下仍有子科室或用户，需先清理后才能删除。"
               okText="删除"
               cancelText="取消"
               okButtonProps={{ danger: true }}
@@ -157,9 +167,9 @@ export function WorkshopsPage() {
           }}
         >
           <Space>
-            <ApartmentOutlined style={{ fontSize: 18, color: '#1677ff' }} />
+            <ClusterOutlined style={{ fontSize: 18, color: '#1677ff' }} />
             <span style={{ fontSize: 16, fontWeight: 600 }}>科室管理</span>
-            <span style={{ color: '#64748b', fontSize: 13 }}>维护科室结构，支持多级科室与负责人</span>
+            <span style={{ color: '#64748b', fontSize: 13 }}>维护生产科室树，支持多级科室、负责人与部门关联</span>
           </Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             新建科室
@@ -186,16 +196,7 @@ export function WorkshopsPage() {
         >
           <Form form={form} layout="vertical" preserve={false}>
             <Form.Item name="name" label="科室名称" rules={[{ required: true, message: '请输入科室名称' }]}>
-              <Input placeholder="例如：研发一科" autoFocus />
-            </Form.Item>
-            <Form.Item name="departmentId" label="所属部门">
-              <Select
-                allowClear
-                placeholder="不选表示暂不归属任何部门"
-                options={departments.map((d) => ({ value: d.id, label: d.name }))}
-                showSearch
-                optionFilterProp="label"
-              />
+              <Input placeholder="例如：包装一科" autoFocus />
             </Form.Item>
             <Form.Item name="parentId" label="上级科室">
               <Select
@@ -204,6 +205,15 @@ export function WorkshopsPage() {
                 options={rows
                   .filter((r) => r.id !== editing?.id)
                   .map((r) => ({ value: r.id, label: r.name }))}
+                showSearch
+                optionFilterProp="label"
+              />
+            </Form.Item>
+            <Form.Item name="departmentId" label="所属部门">
+              <Select
+                allowClear
+                placeholder="可不关联"
+                options={departments.map((d) => ({ value: d.id, label: d.name }))}
                 showSearch
                 optionFilterProp="label"
               />

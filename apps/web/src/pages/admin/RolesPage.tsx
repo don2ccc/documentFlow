@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Checkbox, Form, Input, Modal, Space, Table, Typography, message } from "antd";
-import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined, EyeInvisibleOutlined, EyeOutlined } from "@ant-design/icons";
 import { PermissionItem, rolesApi, RoleItem } from "../../api/endpoints";
 
 interface CategoryDef {
@@ -9,7 +9,7 @@ interface CategoryDef {
   icon: React.ReactNode;
 }
 
-// permission categories for the roles page
+// 一级菜单与权限分组的对应关系（5 个一级菜单）
 const CATEGORIES: CategoryDef[] = [
   { key: "workflow", label: "WorkFlow管理", icon: <ApartmentOutlined /> },
   { key: "admin", label: "行政管理", icon: <BankOutlined /> },
@@ -18,12 +18,18 @@ const CATEGORIES: CategoryDef[] = [
   { key: "system", label: "系统管理", icon: <SettingOutlined /> }
 ];
 
-// 按一级菜单分类的权限映射，未列为系统管理。后续新增权限只需补入此表。
+// 一级菜单可见性权限码（与后端 seed.ts 的 menu:* 一致）
+const MENU_VISIBILITY_CODES = CATEGORIES.map((c) => `menu:${c.key}`);
+
+// 按一级菜单分类的权限映射
 const PERM_CATEGORY: Record<string, string> = {
   "document:upload": "workflow",
   "document:preview": "workflow",
   "document:download": "workflow",
   "application:query": "workflow",
+  "application:query:all": "workflow",
+  "application:query:department": "workflow",
+  "application:query:self": "workflow",
   "approval:handle": "workflow",
   "dashboard:view": "workflow",
   "user:manage": "system",
@@ -32,7 +38,10 @@ const PERM_CATEGORY: Record<string, string> = {
   "workflow:manage": "system",
   "audit:view": "system",
   "setting:manage": "system",
-  "database:manage": "system"
+  "database:manage": "system",
+  "department:manage": "system",
+  "workshop:manage": "system",
+  "dormitory:manage": "admin"
 };
 
 export function RolesPage() {
@@ -68,6 +77,8 @@ export function RolesPage() {
     const out: Record<string, PermissionItem[]> = {};
     for (const c of CATEGORIES) out[c.key] = [];
     for (const p of perms) {
+      // 跳过 menu:* 可见性权限，它们只通过分类标题控制
+      if (MENU_VISIBILITY_CODES.includes(p.code)) continue;
       const cat = PERM_CATEGORY[p.code] ?? "system";
       if (!out[cat]) out[cat] = [];
       out[cat].push(p);
@@ -76,6 +87,33 @@ export function RolesPage() {
   }, [perms]);
 
   const selected: string[] = (Form.useWatch("permissionCodes", form) as string[] | undefined) ?? [];
+
+  // 切换一级菜单可见性
+  const toggleVisible = (catKey: string, checked: boolean) => {
+    const menuCode = `menu:${catKey}`;
+    const subCodes = (grouped[catKey] ?? []).map((p) => p.code);
+    const current: string[] = form.getFieldValue("permissionCodes") ?? [];
+    if (checked) {
+      const next = Array.from(new Set([...current, menuCode]));
+      form.setFieldsValue({ permissionCodes: next });
+    } else {
+      // 取消可见：同时清空该分类下的所有子权限
+      const next = current.filter((c) => c !== menuCode && !subCodes.includes(c));
+      form.setFieldsValue({ permissionCodes: next });
+    }
+  };
+
+  // 子权限变化
+  const onSubChange = (catKey: string, subSelected: Array<string | number | boolean>) => {
+    const menuCode = `menu:${catKey}`;
+    const subCodes = (grouped[catKey] ?? []).map((p) => p.code);
+    const current: string[] = form.getFieldValue("permissionCodes") ?? [];
+    const others = current.filter((c) => !subCodes.includes(c) && c !== menuCode);
+    const next = [...others, ...(subSelected as string[])];
+    // 勾选任一子项时，自动勾上一级菜单可见性
+    if (subSelected.length > 0 && !next.includes(menuCode)) next.push(menuCode);
+    form.setFieldsValue({ permissionCodes: Array.from(new Set(next)) });
+  };
 
   const save = async () => {
     try {
@@ -110,6 +148,10 @@ export function RolesPage() {
     }
   ];
 
+  // 统计：可见的一级菜单数 + 子权限数
+  const visibleMenuCount = MENU_VISIBILITY_CODES.filter((c) => selected.includes(c)).length;
+  const subPermCount = selected.filter((c) => !MENU_VISIBILITY_CODES.includes(c)).length;
+
   return (
     <Card title="角色管理" extra={<Button type="primary" onClick={() => openEdit()}>新建角色</Button>}>
       <Table rowKey="id" columns={columns} dataSource={roles} pagination={{ pageSize: 10 }} />
@@ -120,7 +162,7 @@ export function RolesPage() {
         onCancel={() => setOpen(false)}
         confirmLoading={saving}
         destroyOnHidden
-        width={720}
+        width={760}
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入角色名称" }]}>
@@ -137,47 +179,78 @@ export function RolesPage() {
           <Form.Item
             name="permissionCodes"
             label="权限"
-            rules={[{ required: true, message: "请至少勾选一项权限" }]}
+            rules={[{ required: true, message: "请至少勾选一项" }]}
+            extra="勾选一级菜单的「可见」后，该菜单才会对用户显示。取消勾选会同时清空该菜单下的子权限。"
           >
-            <Checkbox.Group>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {CATEGORIES.map((cat) => {
-                  const items = grouped[cat.key] ?? [];
-                  const picked = items.filter((p) => selected.includes(p.code)).length;
-                  return (
-                    <div key={cat.key}>
-                      <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
-                        <span style={{ marginRight: 6 }}>{cat.icon}</span>{cat.label}
-                        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8, fontWeight: "normal" }}>
-                          （已选 {picked} / {items.length || 0}）
-                        </Typography.Text>
-                      </Typography.Title>
-                      {items.length === 0 ? (
+            <input type="hidden" />
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {CATEGORIES.map((cat) => {
+                const items = grouped[cat.key] ?? [];
+                const menuCode = `menu:${cat.key}`;
+                const visible = selected.includes(menuCode);
+                const subPicked = items.filter((p) => selected.includes(p.code)).length;
+                return (
+                  <div
+                    key={cat.key}
+                    style={{
+                      border: "1px solid " + (visible ? "#f36b21" : "#e5e7eb"),
+                      borderRadius: 8,
+                      background: visible ? "#fff7f0" : "#fafafa",
+                      padding: "10px 12px"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: visible && items.length > 0 ? 8 : 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: visible ? "#f36b21" : "#94a3b8" }}>{cat.icon}</span>
+                        <Typography.Text strong style={{ fontSize: 14 }}>{cat.label}</Typography.Text>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          该模块暂未配置权限项
+                          {items.length > 0 ? `（子权限 ${subPicked} / ${items.length}）` : "（占位模块，暂无子权限）"}
                         </Typography.Text>
-                      ) : (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "4px 16px" }}>
-                          {items.map((p) => (
-                            <Checkbox key={p.id} value={p.code}>
-                              <span>{p.name}</span>
-                              <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
-                                {p.code}
-                              </Typography.Text>
-                            </Checkbox>
-                          ))}
-                        </div>
-                      )}
+                      </div>
+                      <Checkbox
+                        checked={visible}
+                        onChange={(e) => toggleVisible(cat.key, e.target.checked)}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+                          可见
+                        </span>
+                      </Checkbox>
                     </div>
-                  );
-                })}
-              </div>
-            </Checkbox.Group>
+                    {items.length > 0 && (
+                      <div
+                        style={{
+                          opacity: visible ? 1 : 0.45,
+                          pointerEvents: visible ? "auto" : "none",
+                          transition: "opacity 0.15s"
+                        }}
+                      >
+                        <Checkbox.Group
+                          value={items.filter((p) => selected.includes(p.code)).map((p) => p.code)}
+                          onChange={(vals) => onSubChange(cat.key, vals)}
+                        >
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "4px 16px" }}>
+                            {items.map((p) => (
+                              <Checkbox key={p.id} value={p.code}>
+                                <span>{p.name}</span>
+                                <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
+                                  {p.code}
+                                </Typography.Text>
+                              </Checkbox>
+                            ))}
+                          </div>
+                        </Checkbox.Group>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </Form.Item>
           <Alert
             showIcon
             type="info"
-            message={`当前共勾选 ${selected.length} 项权限`}
+            message={`已勾选 ${visibleMenuCount} 个一级菜单，子权限 ${subPermCount} 项`}
             style={{ marginTop: -8 }}
           />
         </Form>
@@ -186,3 +259,4 @@ export function RolesPage() {
   );
 }
 // build: invalidate cached bundle
+

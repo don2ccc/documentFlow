@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Popconfirm, Space, Table, Tag, Typography, message } from 'antd';
-import { ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
-import { versionsApi, VersionEntry, AppVersion } from '../../api/endpoints';
+import { PlusOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
+import { versionsApi, versionsSnapshotApi, VersionEntry, AppVersion } from '../../api/endpoints';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -11,6 +11,7 @@ export function VersionsPage() {
   const [current, setCurrent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [rolling, setRolling] = useState<string | null>(null);
+  const [snapshotting, setSnapshotting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,11 +42,40 @@ export function VersionsPage() {
     }
   }, [load]);
 
+  const snapshot = useCallback(async () => {
+    setSnapshotting(true);
+    try {
+      const r = await versionsSnapshotApi.snapshot();
+      message.success(r.message);
+      load();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? '生成历史版本失败');
+    } finally {
+      setSnapshotting(false);
+    }
+  }, [load]);
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card
         title={<Title level={4} style={{ margin: 0 }}>系统版本</Title>}
-        extra={<Button icon={<ReloadOutlined />} loading={loading} onClick={load}>刷新</Button>}
+        extra={
+          <Space>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>刷新</Button>
+            <Popconfirm
+              title="生成历史版本"
+              description={`将以当前提交 ${info?.commit ?? ''} 创建一个新的历史版本标签（不影响代码），生成后可在下方列表中查看和回滚。`}
+              okText="确认生成"
+              cancelText="取消"
+              onConfirm={snapshot}
+              disabled={!info}
+            >
+              <Button type="primary" icon={<PlusOutlined />} loading={snapshotting} disabled={!info}>
+                生成历史版本
+              </Button>
+            </Popconfirm>
+          </Space>
+        }
       >
         {info ? (
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -81,10 +111,10 @@ export function VersionsPage() {
           dataSource={list}
           pagination={false}
           columns={[
-            { title: '版本', dataIndex: 'tag', width: 120, render: (tag: string) => (
+            { title: '版本', dataIndex: 'tag', width: 120, render: (tag: string, row: VersionEntry) => (
               <Space>
-                <Tag color={tag === current ? 'green' : 'default'}>{tag}</Tag>
-                {tag === current ? <Tag color="green">当前</Tag> : null}
+                <Tag color={row.commit === current ? 'green' : 'default'}>{tag}</Tag>
+                {row.commit === current ? <Tag color="green">当前</Tag> : null}
               </Space>
             ) },
             { title: '提交', dataIndex: 'sha', width: 110, render: (s: string) => <Text code>{s}</Text> },
@@ -99,7 +129,7 @@ export function VersionsPage() {
                 okButtonProps={{ danger: true }}
                 onConfirm={() => rollback(row.tag)}
               >
-                <Button danger size="small" icon={<RollbackOutlined />} loading={rolling === row.tag} disabled={row.tag === current}>
+                <Button danger size="small" icon={<RollbackOutlined />} loading={rolling === row.tag} disabled={row.commit === current}>
                   回到该版
                 </Button>
               </Popconfirm>
