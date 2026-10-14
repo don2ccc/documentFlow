@@ -67,11 +67,11 @@ export class SystemSettingsController {
   async testEmail(@Body() dto: TestEmailDto) {
     const ok = await this.mailer.send(
       dto.to,
-      'DocumentFlow ????',
-      '???????????????????????',
-      '<p>???????????????????????</p>'
+      'DocumentFlow 邮件测试',
+      '这是一封测试邮件，说明系统通知邮件已配置成功。',
+      '<p>这是一封测试邮件，说明系统通知邮件已配置成功。</p>'
     );
-    return { ok, message: ok ? '???????' : 'SMTP ??????????????????' };
+    return { ok, message: ok ? '测试邮件已发送' : 'SMTP 未配置或发送失败（请查看服务器日志）' };
   }
 
 
@@ -88,7 +88,7 @@ export class SystemSettingsController {
     const versions = await Promise.all(lines.map(async (line) => {
       const [tag, sha, date, ...subjectParts] = line.split('|');
       const subject = subjectParts.join('|') || '';
-      // ?? tag ????? commit SHA?annotated tag ? %(objectname) ? tag object ????? commit?
+      // 对 annotated tag 而言 %(objectname) 是 tag object 而非 commit，需再解析出真实 commit SHA
       let commit = sha;
       try {
         const { stdout: c } = await execFile_p('git', ['-C', '/opt/documentflow', 'rev-parse', '--short', `${tag}^{commit}`]);
@@ -123,7 +123,7 @@ export class SystemSettingsController {
     const subject = (await execFile_p('git', ['-C', repo, 'log', '-1', '--pretty=%s'])).stdout.trim();
     const message = `snapshot: ${next} (${sha}) - ${subject}`;
     await execFile_p('git', ['-C', repo, 'tag', '-a', next, '-m', message]);
-    return { ok: true, message: `??????? ${next}`, tag: next, sha };
+    return { ok: true, message: `快照标签已创建 ${next}`, tag: next, sha };
   }
 
   @Post('versions/:tag/rollback')
@@ -171,7 +171,7 @@ export class SystemSettingsController {
       try { result = JSON.parse(line); } catch { /* keep empty */ }
       return {
         ok: true,
-        message: '????????nginx ???',
+        message: '证书已签发，请手动 reload nginx 后重启服务',
         requestedBy: user?.username ?? user?.id ?? null,
         ...result,
         log: stdout

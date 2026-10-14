@@ -95,11 +95,11 @@ export class AuthService {
     return { ok: true };
   }
 
-  // ??? token ???? token????????????/??????????????????????????
+  // 续期 token：按当前用户重新解析角色与权限后签发新 token
   async refresh(userId: string): Promise<LoginResult> {
     const fresh = await this.userRepo.findOne({ where: { id: userId }, relations: { roles: { permissions: true } } });
     if (!fresh || fresh.status !== 'active') {
-      throw new UnauthorizedException('?????');
+      throw new UnauthorizedException('用户不可用');
     }
     const roles = fresh.roles.map((r) => r.code);
     const roleIds = fresh.roles.map((r) => r.id);

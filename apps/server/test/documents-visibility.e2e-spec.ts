@@ -31,7 +31,7 @@ describe('Document visibility (e2e)', () => {
     const otherName = `u_vis_${Date.now()}`;
     await request(app.getHttpServer())
       .post('/api/users').set('Authorization', `Bearer ${adminToken}`)
-      .send({ username: otherName, password: 'Pass@123', name: '其他用户', roleIds: [] });
+      .send({ username: otherName, password: 'Pass@123', name: '其他用户', email: 'vis@example.com', roleIds: [] });
     const otherLogin = await request(app.getHttpServer())
       .post('/api/auth/login').send({ username: otherName, password: 'Pass@123' });
 

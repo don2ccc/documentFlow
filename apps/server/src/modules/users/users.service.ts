@@ -5,6 +5,7 @@ import { ILike, In, Repository } from 'typeorm';
 import { UserBriefDto, UserStatus } from '@document-flow/shared';
 import { Role } from '../roles/entities/role.entity';
 import { AuditService } from '../audit/audit.service';
+import { SystemSettingsService } from '../core-settings/system-settings.service';
 import { MailerService } from '../notifications/mailer.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -20,7 +21,8 @@ export class UsersService {
     @InjectRepository(User) private readonly repo: Repository<User>,
     @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
     private readonly audit: AuditService,
-    private readonly mailer: MailerService
+    private readonly mailer: MailerService,
+    private readonly settings: SystemSettingsService
   ) {}
 
   async findByUsernameWithRoles(username: string): Promise<User | null> {
@@ -33,7 +35,7 @@ export class UsersService {
 
   async getMe(id: string): Promise<UserBriefDto & { permissions: string[] }> {
     const user = await this.repo.findOne({ where: { id }, relations: { roles: { permissions: true } } });
-    if (!user) throw new NotFoundException('?????');
+    if (!user) throw new NotFoundException('用户不存在');
     const permissions = [...new Set((user.roles ?? []).flatMap((r) => (r.permissions ?? []).map((p) => p.code)))];
     return { ...this.toBrief(user), permissions };
   }
@@ -164,13 +166,14 @@ export class UsersService {
     await this.audit.log(operatorId, 'user:approve', 'user', id, { username: saved.username });
 
     const subject = '【SPO 办公系统】账号已开通';
+    const baseUrl = await this.settings.getPublicBaseUrl();
     const text = [
       `您好 ${saved.name}：`,
       '',
       '您申请注册的「SPO 办公系统」账号已通过审批，请使用以下信息登录：',
       `  用户名：${saved.username}`,
       `  初始密码：${initialPassword}`,
-      `  登录地址：https://140.249.189.35:8443/login`,
+      `  登录地址：${baseUrl}/login`,
       '',
       '为了您的账号安全，首次登录后系统会强制要求您修改密码。',
       '如非本人申请，请忽略本邮件。'

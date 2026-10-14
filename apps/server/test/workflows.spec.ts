@@ -50,7 +50,10 @@ describe('WorkflowsService.validateGraph', () => {
       ],
       [
         { id: 'e1', fromNodeId: 's', toNodeId: 'a' },
-        { id: 'e2', fromNodeId: 'a', toNodeId: 'e' }
+        { id: 'e2', fromNodeId: 'a', toNodeId: 'e' },
+        // 孤立节点必须自带出口连线，否则 validateGraph 会先在「缺少出口连线」处抛出，
+        // 根本走不到可达性检查
+        { id: 'e3', fromNodeId: 'orphan', toNodeId: 'e' }
       ]
     )).toThrow('存在不可达节点');
   });

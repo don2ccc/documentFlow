@@ -25,7 +25,7 @@ describe('Users (e2e)', () => {
   it('creates a user and lists without passwordHash', async () => {
     const create = await request(app.getHttpServer())
       .post('/api/users').set('Authorization', `Bearer ${adminToken}`)
-      .send({ username, password: 'Pass@123', name: '测试用户', roleIds: [] });
+      .send({ username, password: 'Pass@123', name: '测试用户', email: 'e2e@example.com', roleIds: [] });
     expect(create.status).toBe(201);
     expect(create.body.passwordHash).toBeUndefined();
     const list = await request(app.getHttpServer())
@@ -40,7 +40,7 @@ describe('Users (e2e)', () => {
     expect(login.status).toBe(200);
     const res = await request(app.getHttpServer())
       .post('/api/users').set('Authorization', `Bearer ${login.body.accessToken}`)
-      .send({ username: 'x', password: 'Pass@123', name: 'x', roleIds: [] });
+      .send({ username: 'x', password: 'Pass@123', name: 'x', email: 'x@example.com', roleIds: [] });
     expect(res.status).toBe(403);
   });
 

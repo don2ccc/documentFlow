@@ -51,15 +51,15 @@ const DEFAULT_SSL_FORM: Required<Omit<RenewSslParams, never>> = {
 function describeStatus(status?: string) {
   switch (status) {
     case 'expired':
-      return { color: 'red', label: '???', icon: <ExclamationCircleOutlined /> };
+      return { color: 'red', label: '已过期', icon: <ExclamationCircleOutlined /> };
     case 'expiring':
-      return { color: 'orange', label: '????', icon: <ClockCircleOutlined /> };
+      return { color: 'orange', label: '即将过期', icon: <ClockCircleOutlined /> };
     case 'warning':
-      return { color: 'gold', label: '????', icon: <ClockCircleOutlined /> };
+      return { color: 'gold', label: '临近过期', icon: <ClockCircleOutlined /> };
     case 'ok':
-      return { color: 'green', label: '??', icon: <CheckCircleOutlined /> };
+      return { color: 'green', label: '正常', icon: <CheckCircleOutlined /> };
     default:
-      return { color: 'default', label: '??', icon: <SyncOutlined spin /> };
+      return { color: 'default', label: '未知', icon: <SyncOutlined spin /> };
   }
 }
 
@@ -123,7 +123,7 @@ export function SystemSettingsPage() {
         sslForm.setFieldsValue(DEFAULT_SSL_FORM);
       }
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? '??????');
+      message.error(e?.response?.data?.message ?? '证书读取失败');
     } finally {
       setSslLoading(false);
     }
@@ -146,10 +146,10 @@ export function SystemSettingsPage() {
         settingsApi.set('smtp.pass', String(v['smtp.pass'] ?? '')),
         settingsApi.set('smtp.from', String(v['smtp.from'] ?? ''))
       ]);
-      message.success('????????????');
+      message.success('已保存，下次发件立即生效');
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? '????');
+      message.error(e?.response?.data?.message ?? '保存失败');
     } finally {
       setSaving(false);
     }
@@ -158,24 +158,24 @@ export function SystemSettingsPage() {
   const onTestSend = useCallback(async () => {
     const fromField = form.getFieldValue('smtp.from');
     const fallback = (typeof fromField === 'string' ? fromField.match(/<([^>]+)>/)?.[1] : null) || 'test@example.com';
-    const target = window.prompt('????????????', fallback);
+    const target = window.prompt('把测试邮件发到哪个邮箱？', fallback);
     if (!target) return;
     try {
       const r = await settingsApi.testEmail(target);
-      if (r.ok) message.success(`??????? ${target}`);
+      if (r.ok) message.success(`测试邮件已发到 ${target}`);
       else message.warning(r.message);
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? '??????');
+      message.error(e?.response?.data?.message ?? '测试发送失败');
     }
   }, [form]);
 
   const onReset = useCallback(async () => {
     try {
       await Promise.all(SMTP_KEYS.map((k) => settingsApi.remove(k).catch(() => undefined)));
-      message.success('??? SMTP ??');
+      message.success('已清空 SMTP 设置');
       load();
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? '????');
+      message.error(e?.response?.data?.message ?? '清空失败');
     }
   }, [load]);
 
@@ -215,13 +215,13 @@ export function SystemSettingsPage() {
       });
       setRenewResult({ ok: !!r.ok, message: r.message || r.error, notAfter: r.notAfter });
       if (r.ok) {
-        message.success('?????');
+        message.success('证书已签发');
         loadSsl();
       } else {
-        message.error(r.message || r.error || '????');
+        message.error(r.message || r.error || '签发失败');
       }
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? e?.message ?? '????';
+      const msg = e?.response?.data?.message ?? e?.message ?? '签发失败';
       setRenewResult({ ok: false, message: msg });
       message.error(msg);
     } finally {
@@ -238,8 +238,8 @@ export function SystemSettingsPage() {
         <Alert
           type="error"
           showIcon
-          message="???????"
-          description={ssl.error || `${ssl.path || '/etc/nginx/ssl/documentflow.crt'} ???`}
+          message="证书文件不存在"
+          description={ssl.error || `${ssl.path || '/etc/nginx/ssl/documentflow.crt'} 不存在`}
         />
       );
     }
@@ -249,8 +249,8 @@ export function SystemSettingsPage() {
           <Alert
             type="error"
             showIcon
-            message={`????? ${Math.abs(ssl.daysLeft)} ?`}
-            description={`?????${ssl.notAfter || '??'}?HTTPS ??????????????????`}
+            message={`证书已过期 ${Math.abs(ssl.daysLeft)} 天`}
+            description={`有效期至：${ssl.notAfter || '未知'}。HTTPS 无法建立安全连接，建议尽快续签证书。`}
           />
         );
       }
@@ -259,8 +259,8 @@ export function SystemSettingsPage() {
           <Alert
             type="warning"
             showIcon
-            message={`???? ${ssl.daysLeft} ????`}
-            description={`?????${ssl.notAfter || '??'}???????????? HTTPS ???`}
+            message={`距离到期 ${ssl.daysLeft} 天后过期`}
+            description={`有效期至：${ssl.notAfter || '未知'}。建议在到期前完成证书续签，HTTPS 会中断`}
           />
         );
       }
@@ -269,8 +269,8 @@ export function SystemSettingsPage() {
           <Alert
             type="info"
             showIcon
-            message={`???? ${ssl.daysLeft} ???`}
-            description={`?????${ssl.notAfter || '??'}??????????`}
+            message={`证书还有 ${ssl.daysLeft} 天有效`}
+            description={`有效期至：${ssl.notAfter || '未知'}。可在到期前完成续签`}
           />
         );
       }
@@ -278,8 +278,8 @@ export function SystemSettingsPage() {
         <Alert
           type="success"
           showIcon
-          message={`????????? ${ssl.daysLeft} ?`}
-          description={`?????${ssl.notAfter || '??'}????????????`}
+          message={`证书有效，剩余天数 ${ssl.daysLeft} 天`}
+          description={`有效期至：${ssl.notAfter || '未知'}。无需任何处理，保持现状`}
         />
       );
     }
@@ -292,14 +292,14 @@ export function SystemSettingsPage() {
         title={
           <Space>
             <SafetyCertificateOutlined />
-            SSL ?? ? ??? HTTPS ??
+            SSL 证书与 HTTPS 状态
           </Space>
         }
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={loadSsl} loading={sslLoading}>??</Button>
+            <Button icon={<ReloadOutlined />} onClick={loadSsl} loading={sslLoading}>刷新</Button>
             <Button type="primary" icon={<SyncOutlined />} onClick={openRenewModal}>
-              ?????
+              签发新证书
             </Button>
           </Space>
         }
@@ -313,27 +313,27 @@ export function SystemSettingsPage() {
                 size="small"
                 bordered
                 items={[
-                  { key: 'status', label: '????', children: ssl ? <Tag color={sslStatusInfo.color} icon={sslStatusInfo.icon}>{sslStatusInfo.label}</Tag> : <span style={{ color: '#999' }}>?</span> },
-                  { key: 'subject', label: '??? (Subject)', children: ssl?.subject ?? '?', span: 1 },
-                  { key: 'issuer', label: '??? (Issuer)', children: ssl?.issuer ?? '?' },
-                  { key: 'selfSigned', label: '??', children: ssl?.selfSigned ? <Tag>???</Tag> : <Tag color="blue">CA ??</Tag> },
-                  { key: 'notBefore', label: '????', children: ssl?.notBefore ? dayjs(ssl.notBefore).format('YYYY-MM-DD HH:mm:ss') : '?' },
-                  { key: 'notAfter', label: '????', children: ssl?.notAfter ? dayjs(ssl.notAfter).format('YYYY-MM-DD HH:mm:ss') : '?' },
-                  { key: 'daysLeft', label: '????', children: typeof ssl?.daysLeft === 'number' ? `${ssl.daysLeft} ?` : '?' },
-                  { key: 'fingerprint', label: 'SHA-256 ??', children: ssl?.fingerprint ? <Typography.Text code style={{ fontSize: 12 }}>{ssl.fingerprint}</Typography.Text> : '?' },
-                  { key: 'path', label: '????', children: <Typography.Text code style={{ fontSize: 12 }}>{ssl?.path ?? '/etc/nginx/ssl/documentflow.crt'}</Typography.Text> }
+                  { key: 'status', label: '证书状态', children: ssl ? <Tag color={sslStatusInfo.color} icon={sslStatusInfo.icon}>{sslStatusInfo.label}</Tag> : <span style={{ color: '#999' }}>-</span> },
+                  { key: 'subject', label: '主题名 (Subject)', children: ssl?.subject ?? '-', span: 1 },
+                  { key: 'issuer', label: '签发者 (Issuer)', children: ssl?.issuer ?? '-' },
+                  { key: 'selfSigned', label: '自签', children: ssl?.selfSigned ? <Tag>自签名</Tag> : <Tag color="blue">CA 签发</Tag> },
+                  { key: 'notBefore', label: '生效时间', children: ssl?.notBefore ? dayjs(ssl.notBefore).format('YYYY-MM-DD HH:mm:ss') : '-' },
+                  { key: 'notAfter', label: '失效时间', children: ssl?.notAfter ? dayjs(ssl.notAfter).format('YYYY-MM-DD HH:mm:ss') : '-' },
+                  { key: 'daysLeft', label: '剩余天数', children: typeof ssl?.daysLeft === 'number' ? `${ssl.daysLeft} 天` : '-' },
+                  { key: 'fingerprint', label: 'SHA-256 指纹', children: ssl?.fingerprint ? <Typography.Text code style={{ fontSize: 12 }}>{ssl.fingerprint}</Typography.Text> : '-' },
+                  { key: 'path', label: '证书路径', children: <Typography.Text code style={{ fontSize: 12 }}>{ssl?.path ?? '/etc/nginx/ssl/documentflow.crt'}</Typography.Text> }
                 ]}
               />
             </Col>
             <Col xs={24} md={10}>
-              <Typography.Title level={5} style={{ marginTop: 0 }}>???????</Typography.Title>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>证书续签与排错</Typography.Title>
               <Typography.Paragraph>
-                ?????????????????????????? reload nginx?
-                ?????????? <Typography.Text code>/opt/documentflow/backups/ssl/</Typography.Text>?
+                续签会覆盖服务器上的现有证书文件，执行前请先确认影响范围，签发后需手动 reload nginx：
+                旧证书会备份到 <Typography.Text code>/opt/documentflow/backups/ssl/</Typography.Text>。
               </Typography.Paragraph>
               <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-                ???????????????HTTPS ???????????????/????
-                ???? CA ?????????? IT ?????
+                这里签发的是自签名证书，HTTPS 可用但浏览器会提示不受信任；
+                如需 CA 机构签发，请联系公司 IT 部门。
               </Typography.Paragraph>
             </Col>
           </Row>
@@ -344,13 +344,13 @@ export function SystemSettingsPage() {
         title={
           <Space>
             <MailOutlined />
-            ???? ? ????
+            邮件设置 · 邮件通知
           </Space>
         }
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>??</Button>
-            <Button danger onClick={onReset}>????</Button>
+            <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新</Button>
+            <Button danger onClick={onReset}>清空配置</Button>
           </Space>
         }
       >
@@ -358,44 +358,44 @@ export function SystemSettingsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="SMTP ???????????????????????????? / ?????"
-          description={lastUpdated ? `?????${lastUpdated}` : '?????? SMTP ??????????????????'}
+          message="SMTP 配置保存后立即生效（无需重启服务）。留空时回退到环境变量 / 仅写日志。"
+          description={lastUpdated ? `最近更新：${lastUpdated}` : '尚未设置任何 SMTP 项，当前所有邮件仅记录到服务器日志。'}
         />
         <Form form={form} layout="vertical" onFinish={onSave} disabled={saving}>
-          <Form.Item name="smtp.host" label="SMTP ??">
-            <Input placeholder="?? smtp.189.cn / smtp.exmail.qq.com" allowClear />
+          <Form.Item name="smtp.host" label="SMTP 主机">
+            <Input placeholder="例如 smtp.189.cn / smtp.exmail.qq.com" allowClear />
           </Form.Item>
           <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="smtp.port" label="??" style={{ flex: 1 }}>
+            <Form.Item name="smtp.port" label="端口" style={{ flex: 1 }}>
               <InputNumber min={1} max={65535} style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="smtp.secure" label="SSL/TLS" style={{ flex: 1 }} valuePropName="checked">
-              <Switch checkedChildren="??" unCheckedChildren="??" />
+              <Switch checkedChildren="启用" unCheckedChildren="关闭" />
             </Form.Item>
           </Space>
-          <Form.Item name="smtp.user" label="????">
+          <Form.Item name="smtp.user" label="登录账号">
             <Input allowClear />
           </Form.Item>
-          <Form.Item name="smtp.pass" label="???? / ???">
-            <Input.Password placeholder="?????????" autoComplete="new-password" />
+          <Form.Item name="smtp.pass" label="登录密码 / 授权码">
+            <Input.Password placeholder="留空将保留原值不变" autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="smtp.from" label="??? (From)">
-            <Input placeholder="?? DocumentFlow <no-reply@example.com>" allowClear />
+          <Form.Item name="smtp.from" label="发件人 (From)">
+            <Input placeholder="例如 DocumentFlow <no-reply@example.com>" allowClear />
           </Form.Item>
           <Space>
-            <Button type="primary" htmlType="submit" loading={saving}>??</Button>
-            <Button icon={<SendOutlined />} onClick={onTestSend}>??????</Button>
+            <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
+            <Button icon={<SendOutlined />} onClick={onTestSend}>发送测试邮件</Button>
           </Space>
         </Form>
       </Card>
 
       <Modal
-        title="?????"
+        title="签发新证书"
         open={renewModalOpen}
         onCancel={closeRenewModal}
         confirmLoading={renewing}
-        okText={renewResult?.ok ? '???' : '????'}
-        cancelText="??"
+        okText={renewResult?.ok ? '完成' : '开始签发'}
+        cancelText="取消"
         onOk={() => {
           if (renewResult?.ok) {
             setRenewModalOpen(false);
@@ -410,18 +410,18 @@ export function SystemSettingsPage() {
         {renewResult?.ok ? (
           <Result
             status="success"
-            title="???????"
+            title="证书签发成功"
             subTitle={
               renewResult.notAfter
-                ? `????????${dayjs(renewResult.notAfter).format('YYYY-MM-DD HH:mm:ss')}`
+                ? `新的有效期至：${dayjs(renewResult.notAfter).format('YYYY-MM-DD HH:mm:ss')}`
                 : undefined
             }
           />
         ) : renewResult ? (
           <Result
             status="error"
-            title="????"
-            subTitle={renewResult.message || '??? /opt/documentflow/logs/ssl-renew.log'}
+            title="签发失败"
+            subTitle={renewResult.message || '详情见 /opt/documentflow/logs/ssl-renew.log'}
           />
         ) : (
           <>
@@ -429,50 +429,50 @@ export function SystemSettingsPage() {
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message="???????? /etc/nginx/ssl/documentflow.crt ? documentflow.key ? reload nginx"
-              description="????????? /opt/documentflow/backups/ssl/?"
+              message="将覆盖 /etc/nginx/ssl/documentflow.crt 与 documentflow.key，签发后需手动 reload nginx"
+              description="旧证书会备份到 /opt/documentflow/backups/ssl/ 下。"
             />
             <Form form={sslForm} layout="vertical" initialValues={DEFAULT_SSL_FORM}>
               <Row gutter={16}>
                 <Col span={8}>
-                  <Form.Item name="days" label="????" rules={[{ required: true }]}>
+                  <Form.Item name="days" label="有效期" rules={[{ required: true }]}>
                     <InputNumber min={1} max={36500} step={30} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="country" label="?? (C)">
+                  <Form.Item name="country" label="国家 (C)">
                     <Input maxLength={2} />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="state" label="?? (ST)">
+                  <Form.Item name="state" label="省份 (ST)">
                     <Input />
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={16}>
                 <Col span={8}>
-                  <Form.Item name="city" label="?? (L)">
+                  <Form.Item name="city" label="城市 (L)">
                     <Input />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="organization" label="?? (O)">
+                  <Form.Item name="organization" label="组织 (O)">
                     <Input />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="organizationalUnit" label="?? (OU)">
+                  <Form.Item name="organizationalUnit" label="部门 (OU)">
                     <Input />
                   </Form.Item>
                 </Col>
               </Row>
               <Form.Item
                 name="commonName"
-                label="???? (CN)"
-                rules={[{ required: true, message: '??? CN??????? IP' }]}
+                label="域名 (CN)"
+                rules={[{ required: true, message: '请填写 CN，填写 IP 也可以' }]}
               >
-                <Input placeholder="?? 172.17.161.26 ? documentflow.yourcompany.com" />
+                <Input placeholder="例如 172.17.161.26 或 documentflow.yourcompany.com" />
               </Form.Item>
             </Form>
           </>

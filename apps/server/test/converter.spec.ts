@@ -1,4 +1,17 @@
-jest.mock('child_process', () => ({ execFile: jest.fn((_bin: string, _args: string[], cb: (err: Error | null) => void) => cb(null)) }));
+// converter.service 以 spawn 风格调用 execFile（不传回调），靠子进程的 exit/error 事件
+// 加上 90s 定时器 SIGKILL 超时；因此 mock 必须返回带 on/kill 的子进程对象
+jest.mock('child_process', () => ({
+  execFile: jest.fn(() => {
+    const proc: any = {
+      on: (evt: string, fn: (...a: any[]) => void) => {
+        if (evt === 'exit') setTimeout(() => fn(0), 0);
+        return proc;
+      },
+      kill: jest.fn()
+    };
+    return proc;
+  })
+}));
 import { ConverterService } from '../src/modules/documents/converter.service';
 import * as path from 'path';
 
@@ -36,8 +49,7 @@ describe('ConverterService', () => {
     await service.convert('j2');
     expect(require('child_process').execFile).toHaveBeenCalledWith(
       'libreoffice',
-      expect.arrayContaining(['--headless', '--convert-to', 'pdf', '--outdir', '/tmp/previews', '/tmp/a.docx']),
-      expect.any(Function)
+      expect.arrayContaining(['--headless', '--convert-to', 'pdf', '--outdir', '/tmp/previews', '/tmp/a.docx'])
     );
     mkdirSpy.mockRestore(); readdirSpy.mockRestore(); renameSpy.mockRestore();
   });

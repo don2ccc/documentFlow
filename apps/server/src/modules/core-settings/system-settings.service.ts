@@ -81,6 +81,10 @@ export class SystemSettingsService {
   }
 
   async getPublicBaseUrl(): Promise<string> {
-    return (await this.getOrDefault(PUBLIC_BASE_URL_KEY, this.config.get<string>('PUBLIC_BASE_URL'))) ?? 'https://localhost:8443';
+    const raw =
+      (await this.getOrDefault(PUBLIC_BASE_URL_KEY, this.config.get<string>('PUBLIC_BASE_URL'))) ??
+      'https://localhost:8443';
+    // 该值可由管理员在系统设置里填写，末尾斜杠会导致拼接出 `//login` 这类 URL
+    return raw.trim().replace(/\/+$/, '');
   }
 }

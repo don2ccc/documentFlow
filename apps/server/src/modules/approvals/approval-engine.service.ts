@@ -257,7 +257,11 @@ export class ApprovalEngineService {
     const qb = this.taskRepo
       .createQueryBuilder('t')
       .innerJoin(ApprovalInstance, 'i', 'i.id = t.instanceId')
-      .innerJoin(Application, 'd', 'd.id = i."documentId"')
+      // 审批目标既可能是文档也可能是申请单（见 ApprovalInstance.targetType），
+      // 两边都要 LEFT JOIN 才能取到 title/status；条件放在 ON 里，
+      // 保证每个 task 仍然只产生一行，分页不会因 JOIN 扇出而错乱
+      .leftJoin(Document, 'dc', `i."targetType" = 'document' AND dc.id = i."documentId"`)
+      .leftJoin(Application, 'ad', `i."targetType" = 'application' AND ad.id = i."documentId"`)
       .where('t.status = :pending', { pending: TaskStatus.Pending })
       .andWhere(
         new Brackets((b) => {
@@ -267,10 +271,11 @@ export class ApprovalEngineService {
           }
         })
       );
-    if (query.keyword) qb.andWhere('d.title ILIKE :k', { k: `%${query.keyword}%` });
+    if (query.keyword) qb.andWhere(`COALESCE(ad.title, dc.title) ILIKE :k`, { k: `%${query.keyword}%` });
     const rows = await qb
       .select([
-        't.id AS "taskId"', 'd.id AS "documentId"', 'd.title AS title', 'd.status AS "documentStatus"',
+        't.id AS "taskId"', `COALESCE(ad.id, dc.id) AS "documentId"`, `COALESCE(ad.title, dc.title) AS title`,
+        `COALESCE(ad.status, dc.status) AS "documentStatus"`,
         'i.id AS "instanceId"', 'i."initiatorId" AS "initiatorId"', 't."dueAt" AS "dueAt"', 't."nodeId" AS "nodeId"',
         't."assigneeId" AS "assigneeId"', 't."assigneeRoleId" AS "assigneeRoleId"'
       ])
@@ -315,7 +320,9 @@ export class ApprovalEngineService {
       const priority = remaining < 2 * 3600_000 ? 'high' : remaining < 24 * 3600_000 ? 'normal' : 'low';
       return {
         taskId: r.taskId, documentId: r.documentId, title: r.title,
-        nodeName: reviewerUsernames.length ? reviewerUsernames.join(', ') : (node?.name ?? '审批'),
+        // 前端「节点名称」列取的是这个字段，必须是流程节点名而不是审批人用户名
+        nodeName: node?.name ?? '审批',
+        reviewerNames: reviewerUsernames,
         priority, dueAt: dueAt?.toISOString() ?? null, submittedByName: initiatorNameMap.get(r.initiatorId) ?? '未知',
         documentStatus: r.documentStatus
       };
@@ -365,6 +372,11 @@ export class ApprovalEngineService {
     if (!instance) throw new NotFoundException('实例不存在');
     if (instance.initiatorId !== actorId) throw new ForbiddenException('只有发起人可以撤回');
     if (instance.status !== InstanceStatus.Running) throw new BadRequestException('当前状态不可撤回');
+    // 已有节点被审批处理（同意/拒绝/转办）后撤回会使已产生的审批结果失效
+    const processed = await this.recordRepo.find({
+      where: { instanceId, action: In([RecordAction.Approve, RecordAction.Reject, RecordAction.Transfer]) }
+    });
+    if (processed.length > 0) throw new BadRequestException('已有节点被处理，无法撤回');
     const pendingTasks = await this.taskRepo.findBy({ instanceId, status: TaskStatus.Pending });
     const assigneeIds = pendingTasks.map((t) => t.assigneeId).filter((id): id is string => !!id);
     instance.status = InstanceStatus.Withdrawn;

@@ -18,3 +18,4 @@ Thumbs.db
 backups/
 *.tsbuildinfo
 *.ssl.new
+dist-backup-*/

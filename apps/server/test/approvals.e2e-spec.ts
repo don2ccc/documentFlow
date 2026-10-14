@@ -32,7 +32,7 @@ describe('Approval flow (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/api/users').set('Authorization', `Bearer ${adminToken}`)
-      .send({ username: approverName, password: 'Pass@123', name: '审批人', roleIds: [role.body.id] });
+      .send({ username: approverName, password: 'Pass@123', name: '审批人', email: 'approver@example.com', roleIds: [role.body.id] });
 
     const wf = await request(app.getHttpServer())
       .post('/api/workflows').set('Authorization', `Bearer ${adminToken}`)
