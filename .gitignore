@@ -17,3 +17,4 @@ Thumbs.db
 # WIP backup snapshots / runtime backup output
 backups/
 *.tsbuildinfo
+*.ssl.new
