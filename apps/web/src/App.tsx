@@ -25,6 +25,7 @@ import { SystemSettingsPage } from './pages/admin/SystemSettingsPage';
 import { VersionsPage } from './pages/admin/VersionsPage';
 import { DatabaseManagementPage } from './pages/admin/DatabaseManagementPage';
 import { DormitoryPage } from './pages/admin/DormitoryPage';
+import { EmployeesPage } from './pages/admin/EmployeesPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 
@@ -61,6 +62,7 @@ export function App() {
                 <Route path="/admin/labor-protection" element={<ComingSoonPage />} />
                 <Route path="/production" element={<ComingSoonPage />} />
                 <Route path="/hr" element={<ComingSoonPage />} />
+                <Route path="/hr/employees" element={<EmployeesPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>

@@ -201,7 +201,13 @@ export function AppLayout() {
       key: KEY_HR,
       icon: <TeamOutlined />,
       label: "HR管理",
-      children: [{ key: "/hr", icon: <TeamOutlined />, label: "（正在开发中）" }]
+      children: [
+        // 只读权限即可查看档案，写操作由 hr:manage 控制
+        ...(has("hr:view") || user?.roles?.includes("sys_admin")
+          ? [{ key: "/hr/employees", icon: <IdcardOutlined />, label: "员工档案" }]
+          : []),
+        { key: "/hr", icon: <TeamOutlined />, label: "（正在开发中）" }
+      ]
     }
   ];
 

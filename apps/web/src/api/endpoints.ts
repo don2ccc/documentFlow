@@ -455,3 +455,78 @@ export const versionsApi = {
 export const versionsSnapshotApi = {
   snapshot: () => api.post<{ ok: boolean; message: string; tag: string; sha: string }>(`/system-settings/versions/snapshot`, {}).then((r) => r.data)
 };
+
+/* ---------------- HR 员工档案 ---------------- */
+
+export interface EmployeeBrief {
+  id: string;
+  employeeNo: string;
+  name: string;
+  gender: string | null;
+  department: string | null;
+  workGroup: string | null;
+  jobTitle: string | null;
+  joinDate: string | null;
+  phone: string | null;
+  /** 列表接口返回脱敏值 */
+  idCardNo: string | null;
+  bankNo: string | null;
+  cardNo: string | null;
+  active: boolean;
+  hasPhoto: boolean;
+}
+
+export interface EmployeeDetail extends EmployeeBrief {
+  namePinyin: string | null;
+  namePinyinRest: string | null;
+  nation: string | null;
+  birthDate: string | null;
+  age: number | null;
+  idCardAddress: string | null;
+  address: string | null;
+  email: string | null;
+  workLocation: string | null;
+  supervisor: string | null;
+  leaveDate: string | null;
+  entryType: string | null;
+  education: string | null;
+  major: string | null;
+  school: string | null;
+  maritalStatus: string | null;
+  salary: string | null;
+  returnedStatus: string | null;
+  sDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmployeeListQuery {
+  keyword?: string;
+  department?: string;
+  workGroup?: string;
+  active?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export const employeesApi = {
+  list: (q: EmployeeListQuery = {}) =>
+    api.get<{ items: EmployeeBrief[]; total: number; page: number; pageSize: number }>('/hr/employees', { params: q }).then((r) => r.data),
+  get: (id: string) => api.get<EmployeeDetail>(`/hr/employees/${id}`).then((r) => r.data),
+  create: (body: Partial<EmployeeDetail>) => api.post<EmployeeDetail>('/hr/employees', body).then((r) => r.data),
+  update: (id: string, body: Partial<EmployeeDetail>) => api.patch<EmployeeDetail>(`/hr/employees/${id}`, body).then((r) => r.data),
+  setActive: (id: string, active: boolean) =>
+    api.patch<EmployeeDetail>(`/hr/employees/${id}/active`, { active }).then((r) => r.data),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/hr/employees/${id}`).then((r) => r.data),
+  uploadPhoto: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api
+      .post<EmployeeDetail>(`/hr/employees/${id}/photo`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120_000
+      })
+      .then((r) => r.data);
+  },
+  photoUrl: (id: string) => `/api/hr/employees/${id}/photo`
+};

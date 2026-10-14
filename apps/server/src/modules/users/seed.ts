@@ -21,7 +21,9 @@ const PERMISSIONS = [
   ['查看仪表盘', 'dashboard:view'],
   ['管理数据库', 'database:manage'],
 
-  ['管理宿舍', 'dormitory:manage'],  ['申请查询', 'application:query']
+  ['管理宿舍', 'dormitory:manage'],  ['申请查询', 'application:query'],
+
+  ['查看员工档案', 'hr:view'],  ['管理员工档案', 'hr:manage']
 ] as const;
 
 export async function seedAdmin(ds: DataSource) {
