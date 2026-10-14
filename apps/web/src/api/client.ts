@@ -1,5 +1,9 @@
 ﻿import axios from 'axios';
 
+export function getAuthToken(): string | null {
+  return localStorage.getItem('token');
+}
+
 export const api = axios.create({
   baseURL: '/api',
   timeout: 60_000

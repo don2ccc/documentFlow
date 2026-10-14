@@ -9,6 +9,6 @@ export interface WorkflowEdgeDto {
   conditionExpr?: { field: 'amount' | 'categoryId'; op: '>=' | '<=' | '==' | '>'; value: number | string } | null;
 }
 export interface WorkflowSnapshot { nodes: WorkflowNodeDto[]; edges: WorkflowEdgeDto[]; version: number }
-export interface UserBriefDto { id: string; username: string; name: string; departmentId?: string | null; roles: string[]; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; roleIds?: string[]; status?: string }
+export interface UserBriefDto { id: string; username: string; name: string; departmentId?: string | null; roles: string[]; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; roleIds?: string[]; status?: string; lastLoginAt?: string | null }
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
 export interface AuthUser { id: string; username: string; roles: string[]; permissions: string[]; roleIds?: string[] }

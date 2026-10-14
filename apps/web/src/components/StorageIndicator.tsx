@@ -59,7 +59,7 @@ const STORAGE_CSS = `
 }
 `;
 import { CloudServerOutlined } from "@ant-design/icons";
-import { systemMonitorApi, StorageInfo } from "../api/endpoints";
+import { StorageInfo } from "../api/endpoints";
 
 function formatGB(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -75,19 +75,44 @@ export function StorageIndicator() {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    const load = async (attempt = 0): Promise<void> => {
+      // 直接 fetch，绕开 api/client.ts 的 401 拦截器；不带 Authorization 时后端会回 401
+      // 我们这里把 401/403 当作“无权访问”静默处理，避免把整个页面踢回 /login
+      let token: string | null = null;
+      try { token = localStorage.getItem("token"); } catch { /* SSR / 隐私模式 */ }
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       try {
-        const data = await systemMonitorApi.storage();
+        const resp = await fetch("/api/system-monitor/storage", { headers, cache: "no-store" });
+        if (resp.status === 401 || resp.status === 403) {
+          if (!cancelled) setError("无权访问");
+          return;
+        }
+        if (!resp.ok) {
+          // 瞬时错误：等 2 秒重试一次
+          if (attempt === 0 && !cancelled) {
+            window.setTimeout(() => { if (!cancelled) load(attempt + 1); }, 2000);
+            return;
+          }
+          if (!cancelled) setError(`HTTP ${resp.status}`);
+          return;
+        }
+        const data = (await resp.json()) as StorageInfo;
         if (!cancelled) {
           setInfo(data);
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError((e as Error).message ?? "无法读取");
+        // 网络异常：等 2 秒重试一次
+        if (attempt === 0 && !cancelled) {
+          window.setTimeout(() => { if (!cancelled) load(attempt + 1); }, 2000);
+          return;
+        }
+        if (!cancelled) setError((e as Error)?.message ?? "网络错误");
       }
     };
     load();
-    const t = window.setInterval(load, REFRESH_MS);
+    const t = window.setInterval(() => load(0), REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(t);

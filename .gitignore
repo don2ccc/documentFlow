@@ -10,3 +10,10 @@ data/
 .DS_Store
 Thumbs.db
 .worktrees/
+
+# WIP backup snapshots / runtime backup output
+*.bak.*
+
+# WIP backup snapshots / runtime backup output
+backups/
+*.tsbuildinfo

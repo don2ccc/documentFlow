@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { SmtpCertService } from "../system-settings/smtp-cert.service";
 import { SystemSettingsService } from '../core-settings/system-settings.service';
 
 export interface MailAttachment {
@@ -14,7 +15,10 @@ export interface MailAttachment {
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
 
-  constructor(private readonly settings: SystemSettingsService) {}
+  constructor(
+    private readonly settings: SystemSettingsService,
+    @Optional() private readonly smtpCert?: SmtpCertService
+  ) {}
 
   async send(to: string | string[], subject: string, text: string, html?: string): Promise<boolean> {
     return this.sendWithAttachments(to, subject, text, html, []);
@@ -38,6 +42,9 @@ export class MailerService {
       host: smtp.host,
       port: smtp.port,
       secure: smtp.secure,
+      // raven.pulseeng.com TLS cert expired (notAfter=2026-08-13). 默认跳过校验；
+      // 等 IT 续上证书后，从「系统设置 -> SMTP TLS 证书状态」开关关闭即可恢复严格校验。
+      ignoreTLS: await this.smtpCert?.getIgnoreTLS().catch(() => true) ?? true,
       auth: { user: smtp.user, pass: smtp.pass }
     });
     const validAttachments = attachments.filter((a) => {

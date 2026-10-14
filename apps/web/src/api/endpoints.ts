@@ -36,7 +36,9 @@ export const authApi = {
     api.post<{ ok: boolean }>('/auth/reset-password', { email, code, newPassword }).then((r) => r.data),
   // 新用户注册（公开）
   register: (data: { username: string; password: string; name: string; email: string; employeeNo?: string; directSupervisor?: string; workshopId?: string; position?: string }) =>
-    api.post<{ ok: boolean }>('/auth/register', data).then((r) => r.data)
+    api.post<{ ok: boolean }>('/auth/register', data).then((r) => r.data),
+  // silent token refresh: re-read DB perms without re-login
+  refresh: () => api.post<LoginResult>('/auth/refresh').then((r) => r.data)
 };
 
 export const documentsApi = {
@@ -94,7 +96,7 @@ export interface RoleItem { id: string; name: string; code: string; description:
 export interface PermissionItem { id: string; name: string; code: string }
 export interface DepartmentNode { id: string; name: string; managerId: string | null; children: DepartmentNode[] }
 export interface AuditLogItem { id: string; actorId: string; action: string; targetType: string; targetId: string | null; detail: Record<string, unknown> | null; ip: string | null; createdAt: string }
-export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[]; roleIds?: string[]; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; employeeNo?: string | null; status?: string }
+export interface UserItem { id: string; username: string; name: string; departmentId: string | null; roles: string[]; roleIds?: string[]; email?: string | null; directSupervisor?: string | null; workshopId?: string | null; position?: string | null; employeeNo?: string | null; status?: string; permissions?: string[] ; lastLoginAt?: string | null}
 
 export const rolesApi = {
   list: () => api.get<RoleItem[]>('/roles').then((r) => r.data),
@@ -178,11 +180,57 @@ export interface SystemSettingItem {
   updatedBy: string | null;
 }
 
+export interface SslStatus {
+  exists: boolean;
+  path?: string;
+  keyPath?: string;
+  keyStatus?: string;
+  subject?: string;
+  issuer?: string;
+  selfSigned?: boolean;
+  serial?: string;
+  fingerprint?: string;
+  notBefore?: string;
+  notAfter?: string;
+  daysLeft?: number;
+  status?: 'ok' | 'warning' | 'expiring' | 'expired' | string;
+  error?: string;
+}
+
+export interface RenewSslParams {
+  days?: number;
+  country?: string;
+  state?: string;
+  city?: string;
+  organization?: string;
+  organizationalUnit?: string;
+  commonName?: string;
+}
+
+export interface RenewSslResponse {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  subject?: string;
+  notBefore?: string;
+  notAfter?: string;
+  fingerprint?: string;
+  days?: number;
+  daysLeft?: number;
+  backupTimestamp?: string;
+  requestedBy?: string | null;
+  log?: string;
+  stderr?: string;
+  stdout?: string;
+}
+
 export const settingsApi = {
   list: () => api.get<SystemSettingItem[]>('/system-settings').then((r) => r.data),
   set: (key: string, value: string) => api.put<SystemSettingItem>(`/system-settings/${encodeURIComponent(key)}`, { value }).then((r) => r.data),
   remove: (key: string) => api.delete<{ ok: boolean }>(`/system-settings/${encodeURIComponent(key)}`).then((r) => r.data),
-  testEmail: (to: string) => api.post<{ ok: boolean; message: string }>('/system-settings/test-email', { to }).then((r) => r.data)
+  testEmail: (to: string) => api.post<{ ok: boolean; message: string }>('/system-settings/test-email', { to }).then((r) => r.data),
+  sslStatus: () => api.get<SslStatus>('/system-settings/ssl/status').then((r) => r.data),
+  renewSsl: (params: RenewSslParams = {}) => api.post<RenewSslResponse>('/system-settings/ssl/renew', params).then((r) => r.data)
 };
 
 export interface ApplicationFileInfo {
@@ -386,6 +434,8 @@ export interface AppVersion {
 export interface VersionEntry {
   tag: string;
   sha: string;
+  // tag 实际指向的 commit 短 SHA（annotated tag 时与 sha 不同）；用于高亮「当前」
+  commit?: string;
   date: string;
   subject: string;
 }
@@ -398,5 +448,10 @@ export interface VersionsResponse {
 export const versionsApi = {
   current: () => api.get<AppVersion>(`/system-settings/version`).then((r) => r.data),
   list: () => api.get<VersionsResponse>(`/system-settings/versions`).then((r) => r.data),
-  rollback: (tag: string) => api.post<{ ok: boolean; message: string }>(`/system-settings/versions/${encodeURIComponent(tag)}/rollback`, {}).then((r) => r.data)
+  rollback: (tag: string) => api.post<{ ok: boolean; message: string }>(`/system-settings/versions/${encodeURIComponent(tag)}/rollback`, {}).then((r) => r.data),
+  snapshot: () => api.post<{ ok: boolean; message: string; tag: string; sha: string }>(`/system-settings/versions/snapshot`, {}).then((r) => r.data)
+};
+
+export const versionsSnapshotApi = {
+  snapshot: () => api.post<{ ok: boolean; message: string; tag: string; sha: string }>(`/system-settings/versions/snapshot`, {}).then((r) => r.data)
 };

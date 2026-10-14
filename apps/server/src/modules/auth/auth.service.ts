@@ -52,6 +52,7 @@ export class AuthService {
     const roleIds = user.roles.map((r) => r.id);
     const permissions = [...new Set(user.roles.flatMap((r) => r.permissions.map((p) => p.code)))];
     const accessToken = await this.jwt.signAsync({ sub: user.id, username: user.username, roles, permissions, roleIds });
+    await this.userRepo.update(user.id, { lastLoginAt: new Date() });
     await this.audit.log(user.id, 'login', 'auth', undefined, { username });
     return {
       accessToken,
@@ -92,5 +93,23 @@ export class AuthService {
     const saved = await this.userRepo.save(user);
     await this.audit.log(saved.id, 'user:register', 'user', saved.id, { username: saved.username, email: saved.email });
     return { ok: true };
+  }
+
+  // ??? token ???? token????????????/??????????????????????????
+  async refresh(userId: string): Promise<LoginResult> {
+    const fresh = await this.userRepo.findOne({ where: { id: userId }, relations: { roles: { permissions: true } } });
+    if (!fresh || fresh.status !== 'active') {
+      throw new UnauthorizedException('?????');
+    }
+    const roles = fresh.roles.map((r) => r.code);
+    const roleIds = fresh.roles.map((r) => r.id);
+    const permissions = [...new Set(fresh.roles.flatMap((r) => (r.permissions ?? []).map((p) => p.code)))];
+    const accessToken = await this.jwt.signAsync({ sub: fresh.id, username: fresh.username, roles, permissions, roleIds });
+    await this.audit.log(fresh.id, 'token-refresh', 'auth', undefined, undefined);
+    return {
+      accessToken,
+      user: { id: fresh.id, username: fresh.username, name: fresh.name, departmentId: fresh.departmentId, roles },
+      mustChangePassword: !!fresh.mustChangePassword
+    };
   }
 }

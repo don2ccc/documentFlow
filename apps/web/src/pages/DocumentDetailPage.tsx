@@ -88,7 +88,7 @@ export function DocumentDetailPage() {
   const canDownload = permissions.includes('document:download') || isOwner;
   const canUpload = permissions.includes('document:upload');
 
-  const releasePreviewUrl = (url) => { if (url) URL.revokeObjectURL(url); };
+  const releasePreviewUrl = (url?: string | null) => { if (url) URL.revokeObjectURL(url); };
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, []);
 

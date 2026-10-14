@@ -31,10 +31,11 @@ export class UsersService {
     return this.repo.findOneBy({ id });
   }
 
-  async getMe(id: string): Promise<UserBriefDto> {
-    const user = await this.repo.findOne({ where: { id }, relations: { roles: true } });
-    if (!user) throw new NotFoundException('用户不存在');
-    return this.toBrief(user);
+  async getMe(id: string): Promise<UserBriefDto & { permissions: string[] }> {
+    const user = await this.repo.findOne({ where: { id }, relations: { roles: { permissions: true } } });
+    if (!user) throw new NotFoundException('?????');
+    const permissions = [...new Set((user.roles ?? []).flatMap((r) => (r.permissions ?? []).map((p) => p.code)))];
+    return { ...this.toBrief(user), permissions };
   }
 
   async create(dto: CreateUserDto) {
@@ -210,6 +211,6 @@ export class UsersService {
   }
 
   private toBrief(u: User): UserBriefDto {
-    return { id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, email: u.email ?? null, directSupervisor: u.directSupervisor ?? null, workshopId: u.workshopId ?? null, position: u.position ?? null, status: u.status, roles: u.roles?.map((r) => r.code) ?? [], roleIds: u.roles?.map((r) => r.id) ?? [] };
+    return { id: u.id, username: u.username, name: u.name, departmentId: u.departmentId, email: u.email ?? null, directSupervisor: u.directSupervisor ?? null, workshopId: u.workshopId ?? null, position: u.position ?? null, status: u.status, roles: u.roles?.map((r) => r.code) ?? [], roleIds: u.roles?.map((r) => r.id) ?? [], lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null };
   }
 }

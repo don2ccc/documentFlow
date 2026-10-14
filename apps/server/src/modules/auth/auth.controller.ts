@@ -26,6 +26,13 @@ export class AuthController {
     return this.auth.login(dto.username, dto.password);
   }
 
+  // ????? token ???? token?????/??????????????????????
+  @Post('refresh')
+  @HttpCode(200)
+  refresh(@CurrentUser() user: AuthUser) {
+    return this.auth.refresh(user.id);
+  }
+
   @Post('change-password')
   changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangeOwnPasswordDto) {
     return this.users.changeOwnPassword(user.id, dto.newPassword);

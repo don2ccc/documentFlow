@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, TreeSelect, message } from 'antd';
 import { auditApi, departmentsApi, rolesApi, usersApi, workshopsApi, UserItem } from '../../api/endpoints';
 import { StatusTag } from '../../components/StatusTag';
+import dayjs from 'dayjs';
 
 function collectWorkshopNames(nodes: any[], out: { id: string; name: string }[] = []): { id: string; name: string }[] {
   for (const n of nodes ?? []) {
@@ -145,6 +146,7 @@ export function UsersPage() {
     { title: '职位', dataIndex: 'position' },
     { title: '角色', dataIndex: 'roles', render: (v: string[]) => v.map((r) => <span key={r}>{r}</span>) },
     { title: '状态', dataIndex: 'status', render: (v: string) => <StatusTag status={v} /> },
+    { title: '最后登录', dataIndex: 'lastLoginAt', width: 170, render: (v?: string | null) => v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '从未登录' },
     {
       title: '操作',
       render: (_: unknown, r: UserItem) => (
