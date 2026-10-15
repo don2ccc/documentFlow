@@ -7,23 +7,21 @@ import { describe, expect, it } from 'vitest';
  * 不便直接 import）。改动 RolesPage 时记得同步这里，并让测试失败来提醒。
  */
 
-/** 后端 seed.ts 定义的权限码 */
+/** 后端 seed.ts 定义的权限码（menu:* 是一级菜单可见性权限，不参与分组） */
 const BACKEND_PERMISSIONS = [
+  // WorkFlow管理
   'document:upload', 'document:preview', 'document:download',
-  'approval:handle',
+  'approval:handle', 'dashboard:view',
+  'application:query', 'application:query:all',
+  'application:query:department', 'application:query:self',
+  // 行政管理
+  'dormitory:manage',
+  // HR管理
+  'hr:view', 'hr:manage',
+  // 系统管理
   'user:manage', 'role:manage', 'category:manage', 'department:manage',
   'workflow:manage', 'workshop:manage', 'setting:manage', 'audit:view',
-  'dashboard:view', 'database:manage',
-  'dormitory:manage',
-  'application:query',
-  'hr:view', 'hr:manage'
-];
-
-/** 数据库里还存在、但 seed.ts 没写的权限（历史遗留，见 seed.ts 注释） */
-const LEGACY_PERMISSIONS = [
-  'application:query:all',
-  'application:query:department',
-  'application:query:self'
+  'database:manage'
 ];
 
 /** 一级菜单的可见性权限，不参与分组 */
@@ -58,11 +56,12 @@ const PERM_CATEGORY: Record<string, string> = {
 
 const VALID_CATEGORIES = ['workflow', 'admin', 'production', 'hr', 'system'];
 
-const ALL_PERMISSIONS = [...BACKEND_PERMISSIONS, ...LEGACY_PERMISSIONS];
+const ALL_PERMISSIONS = [...BACKEND_PERMISSIONS, ...MENU_VISIBILITY_CODES];
 
 describe('角色权限分组映射', () => {
-  it('每个权限都被登记了所属分组', () => {
-    const missing = ALL_PERMISSIONS.filter((c) => !PERM_CATEGORY[c]);
+  it('后端定义的每条子权限都登记了所属分组', () => {
+    // menu:* 可见性权限由一级菜单开关控制，不作为子权限参与分组
+    const missing = BACKEND_PERMISSIONS.filter((c) => !PERM_CATEGORY[c]);
     expect(missing).toEqual([]);
   });
 
@@ -74,7 +73,7 @@ describe('角色权限分组映射', () => {
   });
 
   it('没有多余的、库里不存在的映射', () => {
-    const extra = Object.keys(PERM_CATEGORY).filter((c) => !ALL_PERMISSIONS.includes(c));
+    const extra = Object.keys(PERM_CATEGORY).filter((c) => !BACKEND_PERMISSIONS.includes(c));
     expect(extra).toEqual([]);
   });
 

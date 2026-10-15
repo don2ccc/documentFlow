@@ -5,11 +5,46 @@ import { Role } from '../roles/entities/role.entity';
 import { Permission } from '../roles/entities/permission.entity';
 import { User } from './entities/user.entity';
 
-const PERMISSIONS = [
+/**
+ * 权限清单。
+ *
+ * 按前端的五个一级菜单分组，顺序与 RolesPage.tsx 的 CATEGORIES 对应。
+ * 新增权限时务必同步前端 RolesPage 的 PERM_CATEGORY，否则会落进「未分类权限」。
+ *
+ * menu:* 是一级菜单的可见性权限码（菜单可见：WorkFlow管理 等），
+ * 与前端 RolesPage 的 MENU_VISIBILITY_CODES 对应。
+ *
+ * 注意：这套 seed 此前漏写过 application:query:* 三项与 5 条 menu:*，
+ * 而它们在既有生产库里是存在的。若数据库从空库按本文件初始化，
+ * 会缺这 8 条权限，角色编辑页的一级菜单「可见」开关将失去数据来源。
+ */
+/** 供测试引用，见 test/seed-permissions.spec.ts */
+export const PERMISSIONS = [
+  // —— WorkFlow管理 ——
   ['上传文档', 'document:upload'],
   ['预览文档', 'document:preview'],
   ['下载文档', 'document:download'],
   ['处理审批', 'approval:handle'],
+  ['查看仪表盘', 'dashboard:view'],
+  ['申请查询', 'application:query'],
+  ['申请查询-全部', 'application:query:all'],
+  ['申请查询-本部门', 'application:query:department'],
+  ['申请查询-我的', 'application:query:self'],
+  ['可见：WorkFlow管理', 'menu:workflow'],
+
+  // —— 行政管理 ——
+  ['管理宿舍', 'dormitory:manage'],
+  ['可见：行政管理', 'menu:admin'],
+
+  // —— 生产管理 ——
+  ['可见：生产管理', 'menu:production'],
+
+  // —— HR管理 ——
+  ['查看员工档案', 'hr:view'],
+  ['管理员工档案', 'hr:manage'],
+  ['可见：HR管理', 'menu:hr'],
+
+  // —— 系统管理 ——
   ['管理用户', 'user:manage'],
   ['管理角色', 'role:manage'],
   ['管理分类', 'category:manage'],
@@ -18,12 +53,8 @@ const PERMISSIONS = [
   ['管理科室', 'workshop:manage'],
   ['管理系统设置', 'setting:manage'],
   ['查看审计', 'audit:view'],
-  ['查看仪表盘', 'dashboard:view'],
   ['管理数据库', 'database:manage'],
-
-  ['管理宿舍', 'dormitory:manage'],  ['申请查询', 'application:query'],
-
-  ['查看员工档案', 'hr:view'],  ['管理员工档案', 'hr:manage']
+  ['可见：系统管理', 'menu:system']
 ] as const;
 
 export async function seedAdmin(ds: DataSource) {
