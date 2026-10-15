@@ -14,6 +14,8 @@ import {
   DepartmentNode, EmployeeBrief, EmployeeDetail, departmentsApi, employeesApi, workshopsApi
 } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
+import { splitNamePinyin } from '../../utils/pinyin';
+
 
 /** 工作地点取值，来自旧系统的字符串集合编辑器 */
 const WORK_LOCATIONS = ['SPO', 'MPO', 'PSU', 'CPO', 'CDC'];
@@ -136,7 +138,16 @@ export function EmployeesPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * 拼音姓 / 拼音名由中文姓名自动推导，不再要求人工填写。
+   * 一旦用户手动改过其中某个字段，就不再覆盖它 —— 有人会用英文名当「拼音名」
+   * （例如现有档案里就是 Billy），自动推导不应该把人写的值冲掉。
+   */
+  const pinyinTouched = useRef({ surname: false, given: false });
+  const resetPinyinTouched = () => { pinyinTouched.current = { surname: false, given: false }; };
+
   const fillForm = (d: EmployeeDetail) => {
+    resetPinyinTouched();
     form.setFieldsValue({
       name: d.name ?? undefined,
       gender: d.gender ?? undefined,
@@ -183,6 +194,7 @@ export function EmployeesPage() {
   const onCreate = () => {
     form.resetFields();
     form.setFieldsValue({ gender: '男', joinDate: dayjs() });
+    resetPinyinTouched();
     setCurrent(null);
     clearPendingPhoto();
     setMode('create');
@@ -397,7 +409,16 @@ export function EmployeesPage() {
               <Row gutter={12}>
                 <Col span={6}>
                   <Form.Item name="name" label="姓名" rules={[{ required: true, message: '姓名必须填写' }]}>
-                    <Input placeholder="姓名" />
+                    <Input
+                      placeholder="姓名"
+                      onChange={(e) => {
+                        const { surname, given } = splitNamePinyin(e.target.value);
+                        const patch: Record<string, string> = {};
+                        if (!pinyinTouched.current.surname) patch.namePinyin = surname;
+                        if (!pinyinTouched.current.given) patch.namePinyinRest = given;
+                        form.setFieldsValue(patch);
+                      }}
+                    />
                   </Form.Item>
                 </Col>
                 <Col span={6}>
@@ -420,12 +441,12 @@ export function EmployeesPage() {
               <Row gutter={12}>
                 <Col span={6}>
                   <Form.Item name="namePinyin" label="拼音姓">
-                    <Input placeholder="拼音姓" />
+                    <Input placeholder="由姓名自动生成" onChange={() => { pinyinTouched.current.surname = true; }} />
                   </Form.Item>
                 </Col>
                 <Col span={6}>
                   <Form.Item name="namePinyinRest" label="拼音名">
-                    <Input placeholder="拼音名" />
+                    <Input placeholder="由姓名自动生成" onChange={() => { pinyinTouched.current.given = true; }} />
                   </Form.Item>
                 </Col>
                 <Col span={6}>
