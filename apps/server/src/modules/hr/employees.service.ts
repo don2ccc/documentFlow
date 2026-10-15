@@ -175,6 +175,12 @@ export class EmployeesService {
   async setActive(id: string, active: boolean, operatorId: string) {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
+    // 恢复在职时，工号/身份证可能已被另一名在职员工占用。
+    // 不校验的话会直接撞上数据库的部分唯一索引，报成 500。
+    if (active && !e.active) {
+      await this.assertEmployeeNoFree(e.employeeNo, e.id);
+      await this.assertIdCardFree(e.idCardNo ?? undefined, e.id);
+    }
     e.active = active;
     await this.repo.save(e);
     await this.audit.log(operatorId, 'employee:set-active', 'employee', id, { active });
@@ -227,8 +233,20 @@ export class EmployeesService {
     return { absolutePath, mime };
   }
 
+  /**
+   * 工号唯一性：只看在职员工。
+   *
+   * 删除员工是逻辑删除（active=false，行仍留在表里），所以工号并非一离职就释放。
+   * 但离职员工不应继续占用工号——同工号可以再次入职，这与 assertIdCardFree
+   * 的口径一致，数据库侧也有对应的部分唯一索引
+   * hr_employees_employeeNo_active_key（见 migrations/003）。
+   */
   private async assertEmployeeNoFree(employeeNo: string, exceptId?: string) {
-    const found = await this.repo.findOneBy({ employeeNo });
+    const found = await this.repo
+      .createQueryBuilder('e')
+      .where('e.employeeNo = :no', { no: employeeNo })
+      .andWhere('e.active = true')
+      .getOne();
     if (found && found.id !== exceptId) throw new ConflictException(`工号 ${employeeNo} 已存在`);
   }
 

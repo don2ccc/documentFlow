@@ -1,16 +1,34 @@
-import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 /**
  * 员工档案。
  * 字段映射自旧 VB 系统的 [Pulse_MPO1].[dbo].[HR_Employee]，列名改为小驼峰，
  * SQL Server 的 char(n) 固定长度改为 varchar 以便容纳超长输入。
+ *
+ * 唯一性用「部分唯一索引」表达，而不是列上的 unique：
+ * 删除员工是逻辑删除（active=false，行仍在表里），离职员工不应继续占用工号，
+ * 同工号可以再次入职。所以约束只在在职记录之间生效。
+ *
+ * 为什么要写在实体里而不是只放 migrations/003：
+ * app.module 里 synchronize = NODE_ENV !== 'production' || DB_SYNC === 'true'，
+ * 测试与本地开发环境 synchronize 恒为 true。若实体上仍留着 unique: true，
+ * TypeORM 每次启动都会重建全表唯一索引，把迁移的结果悄悄顶掉 ——
+ * 生产库上表现为「工号明明停用了还是不能复用」。
  */
+@Index('hr_employees_employeeNo_active_key', ['employeeNo'], {
+  unique: true,
+  where: 'active = true'
+})
+@Index('hr_employees_idCardNo_active_key', ['idCardNo'], {
+  unique: true,
+  where: 'active = true AND "idCardNo" IS NOT NULL'
+})
 @Entity('hr_employees')
 export class Employee {
   @PrimaryGeneratedColumn('uuid') id!: string;
 
-  /** 员工工号，固定 8 位，业务主键 */
-  @Column({ type: 'varchar', length: 8, unique: true }) employeeNo!: string;
+  /** 员工工号，固定 8 位，业务主键（在职范围内唯一，见类上的部分唯一索引） */
+  @Column({ type: 'varchar', length: 8 }) employeeNo!: string;
 
   @Column({ type: 'varchar', length: 50 }) name!: string;
 
