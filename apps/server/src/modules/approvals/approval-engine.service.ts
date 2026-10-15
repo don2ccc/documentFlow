@@ -752,10 +752,12 @@ export class ApprovalEngineService {
         await this.mailer.sendWithAttachments(u.email, subject, text, html, attachments);
       }
     } catch (err) {
-      const Logger = (await import('@nestjs/common')).Logger;
-      const lg = new Logger('ApprovalEngineService');
+      // 这里原先用 `(await import('@nestjs/common')).Logger` 现取 Logger，
+      // 但 TS 编译成 CJS 后具名导出挂在 .default 上，取到的 Logger 是 undefined，
+      // 于是错误处理分支自己再抛 `Logger is not a constructor`，
+      // 反而把原始错误吞掉并中断流程。类里已有 this.log，直接用即可。
       const e = err as Error & { code?: string; detail?: string; hint?: string };
-      lg.error(`sendCompletionEmail failed instanceId=${instance.id} userIds=${JSON.stringify(userIds)} msg=${e?.message ?? err} code=${e?.code ?? ''} detail=${e?.detail ?? ''} hint=${e?.hint ?? ''}`);
+      this.log.error(`sendCompletionEmail failed instanceId=${instance.id} userIds=${JSON.stringify(userIds)} msg=${e?.message ?? err} code=${e?.code ?? ''} detail=${e?.detail ?? ''} hint=${e?.hint ?? ''}`);
     }
   }
 
