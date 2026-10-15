@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Checkbox, Form, Input, Modal, Space, Table, Typography, message } from "antd";
-import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined, EyeInvisibleOutlined, EyeOutlined, WarningOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined, WarningOutlined } from "@ant-design/icons";
 import { PermissionItem, rolesApi, RoleItem } from "../../api/endpoints";
 
 interface CategoryDef {
@@ -18,8 +18,18 @@ const CATEGORIES: CategoryDef[] = [
   { key: "system", label: "系统管理", icon: <SettingOutlined /> }
 ];
 
-// 一级菜单可见性权限码（与后端 seed.ts 的 menu:* 一致）
-const MENU_VISIBILITY_CODES = CATEGORIES.map((c) => `menu:${c.key}`);
+/**
+ * 已废弃的一级菜单「可见性」权限（menu:*）。
+ *
+ * 这些权限曾经想控制侧边栏的显示，但 AppLayout 从来没有读过它们 ——
+ * 菜单实际是按子权限（如 user:manage / hr:view）显隐的，
+ * 于是角色编辑里的「可见」开关形同虚设，唯一作用是「取消勾选会清空该组子权限」。
+ *
+ * 现在去掉该开关，并删除这批权限（见 migrations/004）。
+ * 这里保留常量仅用于过滤：万一库里还有残留的 menu:* 记录，
+ * 不要把它们当作可编辑的子权限暴露出来。
+ */
+const LEGACY_MENU_CODES = CATEGORIES.map((c) => `menu:${c.key}`);
 
 // 按一级菜单分类的权限映射。
 // 新增权限时必须在这里登记，否则会落进「未分类」分组（见 UNMAPPED_KEY）。
@@ -89,8 +99,8 @@ export function RolesPage() {
     for (const c of CATEGORIES) out[c.key] = [];
     out[UNMAPPED_KEY] = [];
     for (const p of perms) {
-      // 跳过 menu:* 可见性权限，它们只通过分类标题控制
-      if (MENU_VISIBILITY_CODES.includes(p.code)) continue;
+      // 跳过已废弃的 menu:* 权限，它们不该出现在可编辑的子权限里
+      if (LEGACY_MENU_CODES.includes(p.code)) continue;
       const cat = PERM_CATEGORY[p.code];
       if (cat && out[cat]) out[cat].push(p);
       else out[UNMAPPED_KEY].push(p);
@@ -100,33 +110,12 @@ export function RolesPage() {
 
   const selected: string[] = (Form.useWatch("permissionCodes", form) as string[] | undefined) ?? [];
 
-  // 切换一级菜单可见性
-  const toggleVisible = (catKey: string, checked: boolean) => {
-    const menuCode = `menu:${catKey}`;
-    const subCodes = (grouped[catKey] ?? []).map((p) => p.code);
-    const current: string[] = form.getFieldValue("permissionCodes") ?? [];
-    if (checked) {
-      const next = Array.from(new Set([...current, menuCode]));
-      form.setFieldsValue({ permissionCodes: next });
-    } else {
-      // 取消可见：同时清空该分类下的所有子权限
-      const next = current.filter((c) => c !== menuCode && !subCodes.includes(c));
-      form.setFieldsValue({ permissionCodes: next });
-    }
-  };
-
-  // 子权限变化
+  // 子权限变化：直接用该组的新选择替换旧选择
   const onSubChange = (catKey: string, subSelected: Array<string | number | boolean>) => {
-    // 「未分类」不对应任何一级菜单，既没有 menu: 可见性权限，
-    // 也不能把不存在的 menu:__unmapped 存进角色权限里
-    const isRealCategory = CATEGORIES.some((c) => c.key === catKey);
-    const menuCode = `menu:${catKey}`;
     const subCodes = (grouped[catKey] ?? []).map((p) => p.code);
     const current: string[] = form.getFieldValue("permissionCodes") ?? [];
-    const others = current.filter((c) => !subCodes.includes(c) && c !== menuCode);
+    const others = current.filter((c) => !subCodes.includes(c));
     const next = [...others, ...(subSelected as string[])];
-    // 勾选任一子项时，自动勾上一级菜单可见性
-    if (isRealCategory && subSelected.length > 0 && !next.includes(menuCode)) next.push(menuCode);
     form.setFieldsValue({ permissionCodes: Array.from(new Set(next)) });
   };
 
@@ -163,9 +152,8 @@ export function RolesPage() {
     }
   ];
 
-  // 统计：可见的一级菜单数 + 子权限数
-  const visibleMenuCount = MENU_VISIBILITY_CODES.filter((c) => selected.includes(c)).length;
-  const subPermCount = selected.filter((c) => !MENU_VISIBILITY_CODES.includes(c)).length;
+  // 统计：已勾选的子权限总数
+  const subPermCount = selected.filter((c) => !LEGACY_MENU_CODES.includes(c)).length;
 
   return (
     <Card title="角色管理" extra={<Button type="primary" onClick={() => openEdit()}>新建角色</Button>}>
@@ -195,51 +183,32 @@ export function RolesPage() {
             name="permissionCodes"
             label="权限"
             rules={[{ required: true, message: "请至少勾选一项" }]}
-            extra="勾选一级菜单的「可见」后，该菜单才会对用户显示。取消勾选会同时清空该菜单下的子权限。"
+            extra="勾选该角色可用的权限。菜单会按所勾选的权限自动显示：某菜单下一项都没勾时不会出现在侧边栏。"
           >
             <input type="hidden" />
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {CATEGORIES.map((cat) => {
                 const items = grouped[cat.key] ?? [];
-                const menuCode = `menu:${cat.key}`;
-                const visible = selected.includes(menuCode);
                 const subPicked = items.filter((p) => selected.includes(p.code)).length;
                 return (
                   <div
                     key={cat.key}
                     style={{
-                      border: "1px solid " + (visible ? "#f36b21" : "#e5e7eb"),
+                      border: "1px solid " + (subPicked > 0 ? "#f36b21" : "#e5e7eb"),
                       borderRadius: 8,
-                      background: visible ? "#fff7f0" : "#fafafa",
+                      background: subPicked > 0 ? "#fff7f0" : "#fafafa",
                       padding: "10px 12px"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: visible && items.length > 0 ? 8 : 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ color: visible ? "#f36b21" : "#94a3b8" }}>{cat.icon}</span>
-                        <Typography.Text strong style={{ fontSize: 14 }}>{cat.label}</Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {items.length > 0 ? `（子权限 ${subPicked} / ${items.length}）` : "（占位模块，暂无子权限）"}
-                        </Typography.Text>
-                      </div>
-                      <Checkbox
-                        checked={visible}
-                        onChange={(e) => toggleVisible(cat.key, e.target.checked)}
-                      >
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-                          可见
-                        </span>
-                      </Checkbox>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: items.length > 0 ? 8 : 0 }}>
+                      <span style={{ color: subPicked > 0 ? "#f36b21" : "#94a3b8" }}>{cat.icon}</span>
+                      <Typography.Text strong style={{ fontSize: 14 }}>{cat.label}</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {items.length > 0 ? `（${subPicked} / ${items.length}）` : "（暂无权限项）"}
+                      </Typography.Text>
                     </div>
                     {items.length > 0 && (
-                      <div
-                        style={{
-                          opacity: visible ? 1 : 0.45,
-                          pointerEvents: visible ? "auto" : "none",
-                          transition: "opacity 0.15s"
-                        }}
-                      >
+                      <div>
                         <Checkbox.Group
                           value={items.filter((p) => selected.includes(p.code)).map((p) => p.code)}
                           onChange={(vals) => onSubChange(cat.key, vals)}
@@ -302,7 +271,7 @@ export function RolesPage() {
           <Alert
             showIcon
             type="info"
-            message={`已勾选 ${visibleMenuCount} 个一级菜单，子权限 ${subPermCount} 项`}
+            message={`已勾选 ${subPermCount} 项权限`}
             style={{ marginTop: -8 }}
           />
         </Form>

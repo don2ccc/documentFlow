@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * 不便直接 import）。改动 RolesPage 时记得同步这里，并让测试失败来提醒。
  */
 
-/** 后端 seed.ts 定义的权限码（menu:* 是一级菜单可见性权限，不参与分组） */
+/** 后端 seed.ts 定义的子权限码（menu:* 已废弃，见 migrations/004） */
 const BACKEND_PERMISSIONS = [
   // WorkFlow管理
   'document:upload', 'document:preview', 'document:download',
@@ -22,11 +22,6 @@ const BACKEND_PERMISSIONS = [
   'user:manage', 'role:manage', 'category:manage', 'department:manage',
   'workflow:manage', 'workshop:manage', 'setting:manage', 'audit:view',
   'database:manage'
-];
-
-/** 一级菜单的可见性权限，不参与分组 */
-const MENU_VISIBILITY_CODES = [
-  'menu:workflow', 'menu:admin', 'menu:production', 'menu:hr', 'menu:system'
 ];
 
 /** 与 RolesPage.tsx 的 PERM_CATEGORY 保持一致 */
@@ -56,11 +51,8 @@ const PERM_CATEGORY: Record<string, string> = {
 
 const VALID_CATEGORIES = ['workflow', 'admin', 'production', 'hr', 'system'];
 
-const ALL_PERMISSIONS = [...BACKEND_PERMISSIONS, ...MENU_VISIBILITY_CODES];
-
 describe('角色权限分组映射', () => {
   it('后端定义的每条子权限都登记了所属分组', () => {
-    // menu:* 可见性权限由一级菜单开关控制，不作为子权限参与分组
     const missing = BACKEND_PERMISSIONS.filter((c) => !PERM_CATEGORY[c]);
     expect(missing).toEqual([]);
   });
@@ -82,8 +74,8 @@ describe('角色权限分组映射', () => {
     expect(PERM_CATEGORY['hr:manage']).toBe('hr');
   });
 
-  it('menu:* 可见性权限不会被当成子权限分组', () => {
-    const leaked = MENU_VISIBILITY_CODES.filter((c) => PERM_CATEGORY[c]);
-    expect(leaked).toEqual([]);
+  it('menu:* 已废弃，不应再出现在映射表里', () => {
+    // 这批权限从不被 AppLayout 读取，已随 migrations/004 一起删除
+    expect(Object.keys(PERM_CATEGORY).filter((c) => c.startsWith('menu:'))).toEqual([]);
   });
 });

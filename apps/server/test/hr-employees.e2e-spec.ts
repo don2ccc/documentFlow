@@ -142,6 +142,38 @@ describe('HR employees (e2e)', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('该员工在宿舍模块有入住记录时，拒绝彻底删除', async () => {
+    const no = `M${Date.now().toString().slice(-7)}`;
+    const created = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: no, name: '有宿舍记录' });
+    expect(created.status).toBe(201);
+
+    // 宿舍的 employeeNo 是纯文本关联，不是外键，这里直接造一条
+    // checkInDate 是 NOT NULL，必须带上
+    const ds = app.get(DataSource);
+    await ds.query(
+      `INSERT INTO dormitory_residents (id, "employeeNo", name, "checkInDate", "createdAt")
+       VALUES (gen_random_uuid(), $1, $2, CURRENT_DATE, now())`,
+      [no, '有宿舍记录']
+    );
+
+    // 先停用再删除，应被拦住
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    const blocked = await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}/permanent`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(blocked.status).toBe(409);
+
+    // 清掉入住记录后就能删
+    await ds.query('DELETE FROM dormitory_residents WHERE "employeeNo" = $1', [no]);
+    const ok = await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}/permanent`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ok.status).toBe(200);
+  });
+
   it('停用后仍可查询（active=false 的档案保留在库里）', async () => {
     const no = `B${Date.now().toString().slice(-7)}`;
     const created = await request(app.getHttpServer())

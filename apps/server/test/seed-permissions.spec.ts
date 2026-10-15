@@ -27,9 +27,10 @@ describe('权限清单 seed.PERMISSIONS', () => {
     expect(dup).toEqual([]);
   });
 
-  it('五个一级菜单的可见性权限齐全（menu:*）', () => {
-    const menuCodes = codes.filter((c) => c.startsWith('menu:'));
-    expect(menuCodes.sort()).toEqual(CATEGORY_KEYS.map((k) => `menu:${k}`).sort());
+  it('不再写入 menu:* —— 它是死权限，AppLayout 从不读取（migrations/004 已清理）', () => {
+    expect(codes.filter((c) => c.startsWith('menu:'))).toEqual([]);
+    // 五个一级菜单都还在，只是各自可能没有子权限
+    expect(CATEGORY_KEYS).toHaveLength(5);
   });
 
   it('每条权限都有名称和编码', () => {
@@ -52,7 +53,7 @@ describe('权限清单 seed.PERMISSIONS', () => {
     expect(codes).toContain('application:query:self');
   });
 
-  it('总计 26 条，与生产库一致', () => {
-    expect(codes.length).toBe(26);
+  it('总计 21 条（原先 26 条减去 5 条 menu:*）', () => {
+    expect(codes.length).toBe(21);
   });
 });

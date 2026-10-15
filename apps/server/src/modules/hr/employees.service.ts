@@ -201,17 +201,31 @@ export class EmployeesService {
    * 彻底删除：物理删除该行与照片文件，删除后无法再查询到。
    *
    * 与 remove()（停用）的区别：停用保留历史供查询，这里是真删。
-   * 仅允许删除已停用的档案 —— 在职员工必须先停用，避免误删。
+   * 两道前置校验：
+   *   1. 在职员工必须先停用，避免误删；
+   *   2. 该员工在宿舍模块仍有入住记录时禁止删除 —— 宿舍那边用的是纯文本
+   *      employeeNo 而非外键，删掉员工会留下找不到人的入住记录。
    *
-   * 已确认 hr_employees 没有被任何表外键引用，删除不会产生悬挂引用；
-   * 但员工可能留有宿舍入住（dormitory_residents.employeeNo 为纯文本字段），
-   * 那边的关联需要 HR 另行处理。
+   * 已确认 hr_employees 本身没有任何外键引用，删除不会产生其他悬挂引用。
    */
   async removePermanent(id: string, operatorId: string) {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
     if (e.active) {
       throw new BadRequestException('在职员工不能直接删除，请先停用再删除');
+    }
+
+    // 宿舍入住记录用纯文本 employeeNo 关联，不是外键，删掉员工会留下找不到人的入住记录。
+    // 这里拦住，让 HR 先去宿舍模块处理。
+    const residents = await this.repo.manager.query(
+      'SELECT count(*)::int AS c FROM dormitory_residents WHERE "employeeNo" = $1',
+      [e.employeeNo]
+    );
+    const stayCount = Number(residents[0]?.c ?? 0);
+    if (stayCount > 0) {
+      throw new ConflictException(
+        `该员工在宿舍模块仍有 ${stayCount} 条入住记录，请先在「宿舍管理」中办理退住后再删除`
+      );
     }
 
     await this.repo.delete(id);

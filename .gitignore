@@ -11,10 +11,18 @@ data/
 Thumbs.db
 .worktrees/
 
-# WIP backup snapshots / runtime backup output
+# 手工备份残留。
+# 注意：原先只写了 `*.bak.*`（要求 .bak 后面还有点号和内容），
+# 漏掉了实际存在的 applications.controller.ts.bak、AppLayout.tsx.bak2
+# 等形态，导致这些文件一路被提交进仓库。
+*.bak
+*.bak[0-9]*
 *.bak.*
+*.orig
+*.rej
+*.new
 
-# WIP backup snapshots / runtime backup output
+# 运行时备份输出（含 database dump 与部署 tar.gz，不要入库）
 backups/
 *.tsbuildinfo
 *.ssl.new

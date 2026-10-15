@@ -14,9 +14,12 @@ import { User } from './entities/user.entity';
  * menu:* 是一级菜单的可见性权限码（菜单可见：WorkFlow管理 等），
  * 与前端 RolesPage 的 MENU_VISIBILITY_CODES 对应。
  *
- * 注意：这套 seed 此前漏写过 application:query:* 三项与 5 条 menu:*，
- * 而它们在既有生产库里是存在的。若数据库从空库按本文件初始化，
- * 会缺这 8 条权限，角色编辑页的一级菜单「可见」开关将失去数据来源。
+ * 注意：这套 seed 曾漏写过 application:query:* 三项，
+ * 而它们在既有生产库里是存在的。若数据库从空库按本文件初始化，会缺这 3 条权限。
+ *
+ * menu:*（一级菜单可见性）曾经也在这里，但它是死代码 —— AppLayout 从不读取，
+ * 菜单实际按子权限显隐，角色编辑页的「可见」开关形同虚设。
+ * 已于 migrations/004 移除，不再写入。
  */
 /** 供测试引用，见 test/seed-permissions.spec.ts */
 export const PERMISSIONS = [
@@ -30,19 +33,15 @@ export const PERMISSIONS = [
   ['申请查询-全部', 'application:query:all'],
   ['申请查询-本部门', 'application:query:department'],
   ['申请查询-我的', 'application:query:self'],
-  ['可见：WorkFlow管理', 'menu:workflow'],
 
   // —— 行政管理 ——
   ['管理宿舍', 'dormitory:manage'],
-  ['可见：行政管理', 'menu:admin'],
 
-  // —— 生产管理 ——
-  ['可见：生产管理', 'menu:production'],
+  // —— 生产管理（占位模块，暂无子权限）——
 
   // —— HR管理 ——
   ['查看员工档案', 'hr:view'],
   ['管理员工档案', 'hr:manage'],
-  ['可见：HR管理', 'menu:hr'],
 
   // —— 系统管理 ——
   ['管理用户', 'user:manage'],
@@ -53,8 +52,7 @@ export const PERMISSIONS = [
   ['管理科室', 'workshop:manage'],
   ['管理系统设置', 'setting:manage'],
   ['查看审计', 'audit:view'],
-  ['管理数据库', 'database:manage'],
-  ['可见：系统管理', 'menu:system']
+  ['管理数据库', 'database:manage']
 ] as const;
 
 export async function seedAdmin(ds: DataSource) {
