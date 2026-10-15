@@ -1,5 +1,5 @@
 #!/bin/bash
-# Full release: bump version, build server, build web, restart PM2.
+# Full release: bump version, build server, build web, restart service.
 set -euo pipefail
 
 cd /opt/documentflow
@@ -21,8 +21,14 @@ chown -R documentflow:documentflow apps/web/dist/cmaps apps/web/dist/standard_fo
 chmod -R a+rX apps/web/dist/cmaps apps/web/dist/standard_fonts
 echo "[release] Copied $(ls apps/web/dist/cmaps | wc -l) CMaps and $(ls apps/web/dist/standard_fonts | wc -l) standard fonts."
 
-echo "[release] Restarting PM2..."
-su -s /bin/bash documentflow -c "pm2 restart documentflow-api --update-env >/dev/null"
+echo "[release] Restarting service..."
+if command -v systemctl >/dev/null && systemctl list-unit-files documentflow-api.service >/dev/null 2>&1; then
+  sudo systemctl restart documentflow-api
+elif command -v pm2 >/dev/null; then
+  su -s /bin/bash documentflow -c "pm2 restart documentflow-api --update-env >/dev/null"
+else
+  echo "[release] WARN: no restart manager found (systemctl/pm2); please restart the service manually."
+fi
 
 echo
 echo "[release] Done. Latest tag:"
