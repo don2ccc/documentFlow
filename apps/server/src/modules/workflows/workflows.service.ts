@@ -89,7 +89,6 @@ export class WorkflowsService {
     await this.edgeRepo.save(edgeEntities);
     await this.audit.log('system', 'workflow:save-nodes', 'workflow', id, { version: wf.version + 1 });
     wf.version += 1;
-    wf.updatedAt = new Date();
     await this.workflowRepo.save(wf);
     return this.getById(id);
   }
@@ -111,7 +110,7 @@ export class WorkflowsService {
     }
     await this.audit.log('system', 'workflow:set-status', 'workflow', id, { status });
     wf.status = status;
-    wf.updatedAt = new Date();
+    // updatedAt 由 TypeORM 的 @UpdateDateColumn 自动维护，无需手工赋值
     return this.workflowRepo.save(wf);
   }
 

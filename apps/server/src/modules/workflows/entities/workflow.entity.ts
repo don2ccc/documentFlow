@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { WorkflowStatus } from '@document-flow/shared';
 
 @Entity('workflows')
@@ -9,5 +9,6 @@ export class Workflow {
   @Column({ type: 'varchar', default: WorkflowStatus.Draft }) status!: WorkflowStatus;
   @Column({ type: 'int', default: 1 }) version!: number;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
-  @Column({ type: 'timestamptz', default: () => 'now()' }) updatedAt!: Date;
+  // 必须是 UpdateDateColumn：@Column(default: now()) 只在 INSERT 生效，UPDATE 不会刷新
+  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' }) updatedAt!: Date;
 }

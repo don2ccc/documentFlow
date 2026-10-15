@@ -245,7 +245,7 @@ export class DocumentsService {
       })
     );
     await this.jobRepo.save(this.jobRepo.create({ documentVersionId: version.id }));
-    doc.updatedAt = new Date();
+    // updatedAt 由 TypeORM 的 @UpdateDateColumn 自动维护，无需手工赋值
     await this.docRepo.save(doc);
     const ownerNames0 = await this.loadOwnerNames([doc.ownerId]);
     return this.toDto(doc, version, ownerNames0.get(doc.ownerId) ?? null);

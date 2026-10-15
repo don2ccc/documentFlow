@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { DocumentStatus } from '@document-flow/shared';
 
 @Entity('applications')
@@ -14,5 +14,6 @@ export class Application {
   @Column({ type: 'uuid', nullable: true }) currentInstanceId!: string | null;
   @Column({ type: 'uuid', nullable: true }) defaultWorkflowId!: string | null;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
-  @Column({ type: 'timestamptz', default: () => 'now()' }) updatedAt!: Date;
+  // 必须是 UpdateDateColumn：@Column(default: now()) 只在 INSERT 生效，UPDATE 不会刷新
+  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' }) updatedAt!: Date;
 }
