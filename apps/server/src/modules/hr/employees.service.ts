@@ -187,13 +187,49 @@ export class EmployeesService {
     return this.toDetail(e);
   }
 
-  /** 逻辑删除：置 active=false，与旧系统 Activated 位一致，避免历史审批记录断链 */
+  /** 逻辑删除：置 active=false，与旧系统 Activated 位一致，记录仍可查询 */
   async remove(id: string, operatorId: string) {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
     e.active = false;
     await this.repo.save(e);
     await this.audit.log(operatorId, 'employee:deactivate', 'employee', id, { employeeNo: e.employeeNo });
+    return { ok: true };
+  }
+
+  /**
+   * 彻底删除：物理删除该行与照片文件，删除后无法再查询到。
+   *
+   * 与 remove()（停用）的区别：停用保留历史供查询，这里是真删。
+   * 仅允许删除已停用的档案 —— 在职员工必须先停用，避免误删。
+   *
+   * 已确认 hr_employees 没有被任何表外键引用，删除不会产生悬挂引用；
+   * 但员工可能留有宿舍入住（dormitory_residents.employeeNo 为纯文本字段），
+   * 那边的关联需要 HR 另行处理。
+   */
+  async removePermanent(id: string, operatorId: string) {
+    const e = await this.repo.findOneBy({ id });
+    if (!e) throw new NotFoundException('员工不存在');
+    if (e.active) {
+      throw new BadRequestException('在职员工不能直接删除，请先停用再删除');
+    }
+
+    await this.repo.delete(id);
+
+    // 照片文件一并清掉。失败不阻断删除 —— 行已经没了，文件是残留。
+    if (e.photoPath) {
+      try {
+        fs.unlinkSync(path.join(this.photoDir, path.basename(e.photoPath)));
+      } catch {
+        /* 文件可能已不存在，忽略 */
+      }
+    }
+
+    await this.audit.log(operatorId, 'employee:hard-delete', 'employee', id, {
+      employeeNo: e.employeeNo,
+      name: e.name,
+      hadPhoto: !!e.photoPath
+    });
     return { ok: true };
   }
 

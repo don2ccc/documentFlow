@@ -142,17 +142,75 @@ describe('HR employees (e2e)', () => {
     expect(bad.status).toBe(400);
   });
 
-  it('deactivate is a soft delete (active=false)', async () => {
+  it('停用后仍可查询（active=false 的档案保留在库里）', async () => {
+    const no = `B${Date.now().toString().slice(-7)}`;
     const created = await request(app.getHttpServer())
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
-      .send({ employeeNo: `B${Date.now().toString().slice(-7)}`, name: '庚' });
+      .send({ employeeNo: no, name: '庚' });
     const del = await request(app.getHttpServer())
       .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(del.status).toBe(200);
+
+    // 详情仍可查到，且 active=false
     const after = await request(app.getHttpServer())
       .get(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(after.status).toBe(200);
     expect(after.body.active).toBe(false);
+
+    // 在「已停用」筛选下能查到
+    const list = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=false&keyword=${no}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.body.items.length).toBe(1);
+
+    // 「在职」筛选下查不到
+    const act = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=true&keyword=${no}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(act.body.items.length).toBe(0);
+  });
+
+  it('彻底删除后无法再查询', async () => {
+    const no = `D${Date.now().toString().slice(-7)}`;
+    const created = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: no, name: '待彻底删除' });
+    expect(created.status).toBe(201);
+
+    // 在职时不允许直接彻底删除
+    const tooEarly = await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}/permanent`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(tooEarly.status).toBe(400);
+
+    // 先停用，再彻底删除
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    const gone = await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${created.body.id}/permanent`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(gone.status).toBe(200);
+
+    // 查不到了
+    const after = await request(app.getHttpServer())
+      .get(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(after.status).toBe(404);
+
+    // 两种筛选都查不到
+    for (const f of ['true', 'false']) {
+      const list = await request(app.getHttpServer())
+        .get(`/api/hr/employees?active=${f}&keyword=${no}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(list.body.items.length).toBe(0);
+    }
+
+    // 删除后该工号可以被重新使用
+    const reuse = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: no, name: '重建' });
+    expect(reuse.status).toBe(201);
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${reuse.body.id}`).set('Authorization', `Bearer ${adminToken}`);
   });
 
   it('停用后该工号可以再次使用（离职不占用工号）', async () => {

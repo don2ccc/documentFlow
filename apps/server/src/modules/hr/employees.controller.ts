@@ -58,10 +58,24 @@ export class EmployeesController {
     return this.employees.setActive(id, !!body?.active, user.id);
   }
 
-  @Delete(':id')
+  /**
+ * 停用（逻辑删除）：置 active=false，记录仍在库中，可在「已停用」筛选下查到。
+ * 保留历史，避免旧档案断链。
+ */
+@Delete(':id')
   @RequirePermission('hr:manage')
   remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.employees.remove(id, user.id);
+  }
+
+  /**
+ * 彻底删除：物理移除行与照片文件，删除后无法再查询到。
+ * 仅允许删除已停用的档案，避免误删在职员工。
+ */
+@Delete(':id/permanent')
+  @RequirePermission('hr:manage')
+  removePermanent(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.employees.removePermanent(id, user.id);
   }
 
   @Post(':id/photo')

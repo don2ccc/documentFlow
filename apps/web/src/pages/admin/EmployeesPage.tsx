@@ -7,7 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { DataNode } from 'antd/es/tree';
 import {
   DeleteOutlined, EditOutlined, IdcardOutlined, PlusOutlined, ReloadOutlined,
-  SaveOutlined, UndoOutlined, UploadOutlined, UserOutlined
+  SaveOutlined, StopOutlined, UndoOutlined, UploadOutlined, UserOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -252,11 +252,26 @@ export function EmployeesPage() {
     }
   };
 
-  const onDelete = async () => {
+  const onDeactivate = async () => {
     if (!current) return;
     try {
       await employeesApi.remove(current.id);
-      message.success('已停用该员工档案');
+      message.success('已停用，档案仍可在「已停用」筛选中查询');
+      form.resetFields();
+      setCurrent(null);
+      setMode('view');
+      load();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? '操作失败');
+    }
+  };
+
+  /** 彻底删除：物理移除，删除后无法再查询。按钮已禁用在职档案，服务端也会拦。 */
+  const onDestroy = async () => {
+    if (!current) return;
+    try {
+      await employeesApi.removePermanent(current.id);
+      message.success('已彻底删除');
       form.resetFields();
       setCurrent(null);
       setMode('view');
@@ -373,8 +388,23 @@ export function EmployeesPage() {
           <Button icon={<EditOutlined />} disabled={!canManage || mode !== 'view'} onClick={onEdit}>
             修改
           </Button>
-          <Popconfirm title="确认停用该员工档案？" description="停用后档案保留，可随时恢复。" onConfirm={onDelete}>
-            <Button danger icon={<DeleteOutlined />} disabled={!canManage || !current || !current.active}>
+          <Popconfirm
+            title="确认停用该员工档案？"
+            description="停用后档案保留，可在「已停用」筛选下继续查询，也可随时恢复在职。"
+            onConfirm={onDeactivate}
+          >
+            <Button icon={<StopOutlined />} disabled={!canManage || !current || !current.active}>
+              停用
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title="确认彻底删除？此操作不可恢复"
+            description="该档案及其照片会被永久移除，删除后无法再查询。如只是离职，建议改用「停用」。"
+            okText="彻底删除"
+            okButtonProps={{ danger: true }}
+            onConfirm={onDestroy}
+          >
+            <Button danger icon={<DeleteOutlined />} disabled={!canManage || !current || current.active}>
               删除
             </Button>
           </Popconfirm>
