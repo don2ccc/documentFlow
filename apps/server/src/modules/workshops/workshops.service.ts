@@ -62,7 +62,9 @@ export class WorkshopsService {
   }
 
   private async countUsersByWorkshop(id: string): Promise<number> {
-    const raw = await this.repo.manager.query('SELECT COUNT(*)::int AS c FROM users WHERE \ workshopId\ = ', [id]);
+    // 注意：users."workshopId" 是大小写敏感的列名，PostgreSQL 中必须加双引号，
+    // 否则会被折叠成小写而报 column "workshopid" does not exist。
+    const raw = await this.repo.manager.query('SELECT COUNT(*)::int AS c FROM users WHERE "workshopId" = $1', [id]);
     return Number(raw[0]?.c ?? 0);
   }
 }
