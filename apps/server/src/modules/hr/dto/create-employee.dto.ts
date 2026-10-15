@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsNumberString, IsOptional, IsString, Length, Matches, Max, Min
 } from 'class-validator';

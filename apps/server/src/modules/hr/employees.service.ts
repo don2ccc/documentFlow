@@ -6,6 +6,7 @@ import * as path from 'path';
 import { Repository } from 'typeorm';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Employee } from './entities/employee.entity';
 import { AuditService } from '../audit/audit.service';
 
@@ -144,7 +145,7 @@ export class EmployeesService {
     return this.toDetail(saved);
   }
 
-  async update(id: string, dto: CreateEmployeeDto, operatorId: string) {
+  async update(id: string, dto: UpdateEmployeeDto, operatorId: string) {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
     if (dto.employeeNo && dto.employeeNo !== e.employeeNo) await this.assertEmployeeNoFree(dto.employeeNo, id);

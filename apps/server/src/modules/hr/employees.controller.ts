@@ -10,6 +10,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeesService, MAX_PHOTO_SIZE } from './employees.service';
 
 @Controller('hr/employees')
@@ -47,7 +48,7 @@ export class EmployeesController {
 
   @Patch(':id')
   @RequirePermission('hr:manage')
-  update(@Param('id') id: string, @Body() dto: CreateEmployeeDto, @CurrentUser() user: AuthUser) {
+  update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() user: AuthUser) {
     return this.employees.update(id, dto, user.id);
   }
 
