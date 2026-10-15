@@ -123,7 +123,11 @@ export function EmployeesPage() {
     try {
       const r = await employeesApi.list({
         keyword: keyword || undefined,
-        active: activeFilter,
+        // 「全部」的选项值是空串，必须转成 undefined。
+        // 空串会被 axios 当作有效参数发出去，而后端 DTO 的 @IsOptional()
+        // 只跳过 null/undefined，不跳空串，于是校验 active 报
+        // 「must be one of the following values: true, false」。
+        active: activeFilter || undefined,
         page,
         pageSize
       });

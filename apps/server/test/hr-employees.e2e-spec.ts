@@ -12,9 +12,17 @@ describe('HR employees (e2e)', () => {
   /**
    * 测试库是持久的（跑完不清空），而服务层对「在职员工的身份证号」做了唯一性校验。
    * 所以这里每次生成唯一值，否则第二次跑整个 suite 都会 409。
-   * 前 6 位为地区码，中间为出生日期（无校验位），后 4 位随机。
+   * 前 6 位为地区码，中间 8 位出生日期（无校验位），后 4 位序号。
+   *
+   * 后 4 位用进程内自增计数器而不是 Math.random()：
+   * 测试库是持久的，跑得越多命中 9000 种取值的概率越高，
+   * 随机取值迟早会在某次运行中撞号，表现为无关用例偶发 409。
    */
-  const uniqueIdCard = () => `44030119900101${Math.floor(Math.random() * 9000 + 1000)}`;
+  let idCardSeq = Math.floor(Math.random() * 8000);
+  const uniqueIdCard = () => {
+    idCardSeq = (idCardSeq + 1) % 9000;
+    return `44030119900101${String(1000 + idCardSeq).slice(-4)}`;
+  };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -140,6 +148,56 @@ describe('HR employees (e2e)', () => {
       .patch(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`)
       .send({ entryType: '777' });
     expect(bad.status).toBe(400);
+  });
+
+  it('active 筛选：全部 / 在职 / 已停用', async () => {
+    const onNo = `A${Date.now().toString().slice(-7)}`;
+    const offNo = `B${Date.now().toString().slice(-7)}`;
+
+    const on = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: onNo, name: '在职样本' });
+    const off = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: offNo, name: '停用样本' });
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${off.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+
+    // 用唯一工号定位，避免受测试库里其它历史数据与默认分页影响
+
+    // active=true 只返回在职
+    const act = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=true&keyword=${onNo}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(act.status).toBe(200);
+    expect(act.body.items.map((e: any) => e.employeeNo)).toContain(onNo);
+
+    // active=false 只返回已停用
+    const deact = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=false&keyword=${offNo}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(deact.status).toBe(200);
+    expect(deact.body.items.map((e: any) => e.employeeNo)).toContain(offNo);
+
+    // active=（空串）表示不筛选：已停用的也能查到 —— 这正是修复前的 bug
+    const allOff = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=&keyword=${offNo}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(allOff.status).toBe(200);
+    expect(allOff.body.items.map((e: any) => e.employeeNo)).toContain(offNo);
+
+    // 不传 active 同样是不筛选
+    const none = await request(app.getHttpServer())
+      .get(`/api/hr/employees?keyword=${onNo}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(none.status).toBe(200);
+    expect(none.body.items.map((e: any) => e.employeeNo)).toContain(onNo);
+
+    // 反向确认：active=false 查不到在职的
+    const wrong = await request(app.getHttpServer())
+      .get(`/api/hr/employees?active=false&keyword=${onNo}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(wrong.body.items).toEqual([]);
+
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${on.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${off.body.id}/permanent`).set('Authorization', `Bearer ${adminToken}`);
   });
 
   it('该员工在宿舍模块有入住记录时，拒绝彻底删除', async () => {

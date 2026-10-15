@@ -87,7 +87,12 @@ export class EmployeesService {
     }
     if (query.department) qb.andWhere('e.department = :department', { department: query.department });
     if (query.workGroup) qb.andWhere('e.workGroup = :workGroup', { workGroup: query.workGroup });
-    if (query.active !== undefined) qb.andWhere('e.active = :active', { active: query.active === 'true' });
+    // 只认 'true' / 'false' 两种取值，其余（含空串）一律视为不筛选。
+    // 不能写成 `query.active !== undefined` —— 空串会进来并被当成 false，
+    // 「全部」就变成了「只看已停用」。
+    if (query.active === 'true' || query.active === 'false') {
+      qb.andWhere('e.active = :active', { active: query.active === 'true' });
+    }
 
     const [rows, total] = await qb
       .orderBy('e.employeeNo', 'ASC')
