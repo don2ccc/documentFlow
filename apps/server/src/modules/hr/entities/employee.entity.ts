@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 /**
  * 员工档案。
@@ -62,5 +62,11 @@ export class Employee {
   @Column({ type: 'boolean', default: true }) active!: boolean;
   @Column({ type: 'timestamptz', default: () => 'now()' }) sDate!: Date;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
-  @Column({ type: 'timestamptz', default: () => 'now()' }) updatedAt!: Date;
+
+  /**
+   * 最后修改时间。
+   * 必须是 UpdateDateColumn —— 写成 @Column(default: now()) 时只在 INSERT 生效，
+   * UPDATE 不会刷新，导致它永远等于创建时间（参见 system-setting.entity.ts 的正确写法）。
+   */
+  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' }) updatedAt!: Date;
 }

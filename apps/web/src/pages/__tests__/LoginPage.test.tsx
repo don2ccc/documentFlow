@@ -27,7 +27,8 @@ describe('LoginPage', () => {
         </AuthProvider>
       </MemoryRouter>
     );
-    fireEvent.change(screen.getByPlaceholderText('用户名'), { target: { value: 'admin' } });
+    // placeholder 已随登录页改版变为「用户名 / 员工工号」，见 LoginPage.tsx
+fireEvent.change(screen.getByPlaceholderText('用户名 / 员工工号'), { target: { value: 'admin' } });
     fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'Admin@123' } });
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => expect(localStorage.getItem('token')).toBe('t'));
