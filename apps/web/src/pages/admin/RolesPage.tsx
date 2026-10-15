@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Checkbox, Form, Input, Modal, Space, Table, Typography, message } from "antd";
-import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined, EyeInvisibleOutlined, EyeOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, BankOutlined, IdcardOutlined, SettingOutlined, ToolOutlined, EyeInvisibleOutlined, EyeOutlined, WarningOutlined } from "@ant-design/icons";
 import { PermissionItem, rolesApi, RoleItem } from "../../api/endpoints";
 
 interface CategoryDef {
@@ -21,7 +21,8 @@ const CATEGORIES: CategoryDef[] = [
 // 一级菜单可见性权限码（与后端 seed.ts 的 menu:* 一致）
 const MENU_VISIBILITY_CODES = CATEGORIES.map((c) => `menu:${c.key}`);
 
-// 按一级菜单分类的权限映射
+// 按一级菜单分类的权限映射。
+// 新增权限时必须在这里登记，否则会落进「未分类」分组（见 UNMAPPED_KEY）。
 const PERM_CATEGORY: Record<string, string> = {
   "document:upload": "workflow",
   "document:preview": "workflow",
@@ -41,8 +42,18 @@ const PERM_CATEGORY: Record<string, string> = {
   "database:manage": "system",
   "department:manage": "system",
   "workshop:manage": "system",
-  "dormitory:manage": "admin"
+  "dormitory:manage": "admin",
+  "hr:view": "hr",
+  "hr:manage": "hr"
 };
+
+/**
+ * 兜底分组的 key。
+ *
+ * 原来未登记的权限会静默落进「系统管理」，导致 HR 员工档案的 hr:view / hr:manage
+ * 被显示在系统管理下面，管理员在错误的分组里配权限。改成显式暴露「未分类」。
+ */
+const UNMAPPED_KEY = "__unmapped";
 
 export function RolesPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -76,12 +87,13 @@ export function RolesPage() {
   const grouped = useMemo(() => {
     const out: Record<string, PermissionItem[]> = {};
     for (const c of CATEGORIES) out[c.key] = [];
+    out[UNMAPPED_KEY] = [];
     for (const p of perms) {
       // 跳过 menu:* 可见性权限，它们只通过分类标题控制
       if (MENU_VISIBILITY_CODES.includes(p.code)) continue;
-      const cat = PERM_CATEGORY[p.code] ?? "system";
-      if (!out[cat]) out[cat] = [];
-      out[cat].push(p);
+      const cat = PERM_CATEGORY[p.code];
+      if (cat && out[cat]) out[cat].push(p);
+      else out[UNMAPPED_KEY].push(p);
     }
     return out;
   }, [perms]);
@@ -105,13 +117,16 @@ export function RolesPage() {
 
   // 子权限变化
   const onSubChange = (catKey: string, subSelected: Array<string | number | boolean>) => {
+    // 「未分类」不对应任何一级菜单，既没有 menu: 可见性权限，
+    // 也不能把不存在的 menu:__unmapped 存进角色权限里
+    const isRealCategory = CATEGORIES.some((c) => c.key === catKey);
     const menuCode = `menu:${catKey}`;
     const subCodes = (grouped[catKey] ?? []).map((p) => p.code);
     const current: string[] = form.getFieldValue("permissionCodes") ?? [];
     const others = current.filter((c) => !subCodes.includes(c) && c !== menuCode);
     const next = [...others, ...(subSelected as string[])];
     // 勾选任一子项时，自动勾上一级菜单可见性
-    if (subSelected.length > 0 && !next.includes(menuCode)) next.push(menuCode);
+    if (isRealCategory && subSelected.length > 0 && !next.includes(menuCode)) next.push(menuCode);
     form.setFieldsValue({ permissionCodes: Array.from(new Set(next)) });
   };
 
@@ -245,6 +260,43 @@ export function RolesPage() {
                   </div>
                 );
               })}
+              {grouped[UNMAPPED_KEY]?.length > 0 && (
+                <div
+                  style={{
+                    border: "1px solid #f59e0b",
+                    borderRadius: 8,
+                    background: "#fffbeb",
+                    padding: "10px 12px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <WarningOutlined style={{ color: "#f59e0b" }} />
+                    <Typography.Text strong style={{ fontSize: 14 }}>未分类权限</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      （{grouped[UNMAPPED_KEY].length} 项）
+                    </Typography.Text>
+                  </div>
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+                    以下权限尚未归入任何一级菜单分组，通常是新增权限时忘记在 RolesPage 的
+                    PERM_CATEGORY 中登记，请联系管理员处理。
+                  </Typography.Paragraph>
+                  <Checkbox.Group
+                    value={grouped[UNMAPPED_KEY].filter((p) => selected.includes(p.code)).map((p) => p.code)}
+                    onChange={(vals) => onSubChange(UNMAPPED_KEY, vals)}
+                  >
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "4px 16px" }}>
+                      {grouped[UNMAPPED_KEY].map((p) => (
+                        <Checkbox key={p.id} value={p.code}>
+                          <span>{p.name}</span>
+                          <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
+                            {p.code}
+                          </Typography.Text>
+                        </Checkbox>
+                      ))}
+                    </div>
+                  </Checkbox.Group>
+                </div>
+              )}
             </div>
           </Form.Item>
           <Alert
