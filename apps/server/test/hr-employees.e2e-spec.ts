@@ -24,6 +24,16 @@ describe('HR employees (e2e)', () => {
     return `44030119900101${String(1000 + idCardSeq).slice(-4)}`;
   };
 
+  /**
+   * 办理离职。DELETE /:id 现在要求带 reason（服务端 400 拦截），
+   * 所以测试里不能裸调 delete，得走这里，否则全都是 400。
+   */
+  const leave = (id: string, reason = '个人原因辞职') =>
+    request(app.getHttpServer())
+      .delete(`/api/hr/employees/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason });
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -150,7 +160,7 @@ describe('HR employees (e2e)', () => {
     expect(bad.status).toBe(400);
   });
 
-  it('active 筛选：全部 / 在职 / 已停用', async () => {
+  it('active 筛选：全部 / 在职 / 已离职', async () => {
     const onNo = `A${Date.now().toString().slice(-7)}`;
     const offNo = `B${Date.now().toString().slice(-7)}`;
 
@@ -159,9 +169,8 @@ describe('HR employees (e2e)', () => {
       .send({ employeeNo: onNo, name: '在职样本' });
     const off = await request(app.getHttpServer())
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
-      .send({ employeeNo: offNo, name: '停用样本' });
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${off.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+      .send({ employeeNo: offNo, name: '离职样本' });
+    await leave(off.body.id);
 
     // 用唯一工号定位，避免受测试库里其它历史数据与默认分页影响
 
@@ -171,13 +180,13 @@ describe('HR employees (e2e)', () => {
     expect(act.status).toBe(200);
     expect(act.body.items.map((e: any) => e.employeeNo)).toContain(onNo);
 
-    // active=false 只返回已停用
+    // active=false 只返回已离职
     const deact = await request(app.getHttpServer())
       .get(`/api/hr/employees?active=false&keyword=${offNo}`).set('Authorization', `Bearer ${adminToken}`);
     expect(deact.status).toBe(200);
     expect(deact.body.items.map((e: any) => e.employeeNo)).toContain(offNo);
 
-    // active=（空串）表示不筛选：已停用的也能查到 —— 这正是修复前的 bug
+    // active=（空串）表示不筛选：已离职的也能查到 —— 这正是修复前的 bug
     const allOff = await request(app.getHttpServer())
       .get(`/api/hr/employees?active=&keyword=${offNo}`).set('Authorization', `Bearer ${adminToken}`);
     expect(allOff.status).toBe(200);
@@ -194,8 +203,7 @@ describe('HR employees (e2e)', () => {
       .get(`/api/hr/employees?active=false&keyword=${onNo}`).set('Authorization', `Bearer ${adminToken}`);
     expect(wrong.body.items).toEqual([]);
 
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${on.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    await leave(on.body.id);
     await request(app.getHttpServer())
       .delete(`/api/hr/employees/${off.body.id}/permanent`).set('Authorization', `Bearer ${adminToken}`);
   });
@@ -216,9 +224,8 @@ describe('HR employees (e2e)', () => {
       [no, '有宿舍记录']
     );
 
-    // 先停用再删除，应被拦住
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    // 先离职再删除，应被拦住
+    await leave(created.body.id);
     const blocked = await request(app.getHttpServer())
       .delete(`/api/hr/employees/${created.body.id}/permanent`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -232,22 +239,23 @@ describe('HR employees (e2e)', () => {
     expect(ok.status).toBe(200);
   });
 
-  it('停用后仍可查询（active=false 的档案保留在库里）', async () => {
+  it('离职后仍可查询（active=false 的档案保留在库里）', async () => {
     const no = `B${Date.now().toString().slice(-7)}`;
     const created = await request(app.getHttpServer())
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeNo: no, name: '庚' });
-    const del = await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    const del = await leave(created.body.id);
     expect(del.status).toBe(200);
 
-    // 详情仍可查到，且 active=false
+    // 详情仍可查到，且 active=false、离职原因与日期已落库
     const after = await request(app.getHttpServer())
       .get(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(after.status).toBe(200);
     expect(after.body.active).toBe(false);
+    expect(after.body.leaveReason).toBe('个人原因辞职');
+    expect(after.body.leaveDate).toBeTruthy();
 
-    // 在「已停用」筛选下能查到
+    // 在「已离职」筛选下能查到
     const list = await request(app.getHttpServer())
       .get(`/api/hr/employees?active=false&keyword=${no}`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -258,6 +266,64 @@ describe('HR employees (e2e)', () => {
       .get(`/api/hr/employees?active=true&keyword=${no}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(act.body.items.length).toBe(0);
+  });
+
+  it('离职原因必填：空、缺失、纯空格都应被拒', async () => {
+    const mk = async (tag: string) => {
+      const no = `${tag}${Date.now().toString().slice(-7)}`;
+      const r = await request(app.getHttpServer())
+        .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeNo: no, name: `原因校验${tag}` });
+      return { no, id: r.body.id };
+    };
+
+    // 完全不传 body
+    const a = await mk('1');
+    const r1 = await request(app.getHttpServer())
+      .delete(`/api/hr/employees/${a.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(r1.status).toBe(400);
+
+    // reason 为空串
+    const b = await mk('2');
+    const r2 = await leave(b.id, '');
+    expect(r2.status).toBe(400);
+
+    // reason 只有空格
+    const c = await mk('3');
+    const r3 = await leave(c.id, '   ');
+    expect(r3.status).toBe(400);
+
+    // 超长
+    const d = await mk('4');
+    const r4 = await leave(d.id, 'x'.repeat(201));
+    expect(r4.status).toBe(400);
+
+    // 被拒的四条都还在职，没被误改
+    for (const e of [a, b, c, d]) {
+      const chk = await request(app.getHttpServer())
+        .get(`/api/hr/employees/${e.id}`).set('Authorization', `Bearer ${adminToken}`);
+      expect(chk.body.active).toBe(true);
+      expect(chk.body.leaveReason).toBeNull();
+    }
+    for (const e of [a, b, c, d]) await leave(e.id);
+  });
+
+  it('恢复在职时清空离职原因与日期', async () => {
+    const no = `R${Date.now().toString().slice(-7)}`;
+    const created = await request(app.getHttpServer())
+      .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeNo: no, name: '待复职' });
+    expect(created.status).toBe(201);
+
+    await leave(created.body.id, '合同到期不续签');
+    const back = await request(app.getHttpServer())
+      .patch(`/api/hr/employees/${created.body.id}/active`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ active: true });
+    expect(back.status).toBe(200);
+    expect(back.body.active).toBe(true);
+    expect(back.body.leaveReason).toBeNull();
+    expect(back.body.leaveDate).toBeNull();
   });
 
   it('彻底删除后无法再查询', async () => {
@@ -273,9 +339,8 @@ describe('HR employees (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(tooEarly.status).toBe(400);
 
-    // 先停用，再彻底删除
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${created.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    // 先离职，再彻底删除
+    await leave(created.body.id);
     const gone = await request(app.getHttpServer())
       .delete(`/api/hr/employees/${created.body.id}/permanent`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -299,20 +364,18 @@ describe('HR employees (e2e)', () => {
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeNo: no, name: '重建' });
     expect(reuse.status).toBe(201);
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${reuse.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    await leave(reuse.body.id);
   });
 
-  it('停用后该工号可以再次使用（离职不占用工号）', async () => {
+  it('离职后该工号可以再次使用（离职不占用工号）', async () => {
     const no = `S${Date.now().toString().slice(-7)}`;
     const first = await request(app.getHttpServer())
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeNo: no, name: '离职者' });
     expect(first.status).toBe(201);
 
-    // 删除是逻辑删除，行还在表里
-    const del = await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${first.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    // 离职是逻辑删除，行还在表里
+    const del = await leave(first.body.id);
     expect(del.status).toBe(200);
 
     // 同工号应能重新建档（复职场景）
@@ -329,8 +392,7 @@ describe('HR employees (e2e)', () => {
       .post('/api/hr/employees').set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeNo: no, name: '原持有人' });
     expect(old.status).toBe(201);
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${old.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    await leave(old.body.id);
 
     // 同一工号被新员工占用
     const now = await request(app.getHttpServer())
@@ -344,7 +406,6 @@ describe('HR employees (e2e)', () => {
       .send({ active: true });
     expect(back.status).toBe(409);
 
-    await request(app.getHttpServer())
-      .delete(`/api/hr/employees/${now.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    await leave(now.body.id);
   });
 });

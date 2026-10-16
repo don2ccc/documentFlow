@@ -488,6 +488,8 @@ export interface EmployeeDetail extends EmployeeBrief {
   workLocation: string | null;
   supervisor: string | null;
   leaveDate: string | null;
+  /** 离职原因。办理离职时必填，恢复在职时被清空 */
+  leaveReason: string | null;
   entryType: string | null;
   education: string | null;
   major: string | null;
@@ -517,9 +519,13 @@ export const employeesApi = {
   update: (id: string, body: Partial<EmployeeDetail>) => api.patch<EmployeeDetail>(`/hr/employees/${id}`, body).then((r) => r.data),
   setActive: (id: string, active: boolean) =>
     api.patch<EmployeeDetail>(`/hr/employees/${id}/active`, { active }).then((r) => r.data),
-  /** 停用（逻辑删除）：记录仍在，可在「已停用」筛选下查到 */
-    remove: (id: string) => api.delete<{ ok: boolean }>(`/hr/employees/${id}`).then((r) => r.data),
-    /** 彻底删除：物理移除，删除后无法再查询。仅限已停用的档案。 */
+  /**
+   * 离职（逻辑删除）：记录仍在，可在「已离职」筛选下查到。
+   * reason 必填，服务端会校验 —— 空字符串直接 400，不是仅前端拦。
+   */
+  remove: (id: string, reason: string) =>
+    api.delete<{ ok: boolean }>(`/hr/employees/${id}`, { data: { reason } }).then((r) => r.data),
+  /** 彻底删除：物理移除，删除后无法再查询。仅限已离职的档案。 */
     removePermanent: (id: string) =>
       api.delete<{ ok: boolean }>(`/hr/employees/${id}/permanent`).then((r) => r.data),
   uploadPhoto: (id: string, file: File) => {

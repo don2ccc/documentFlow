@@ -13,7 +13,7 @@ import { Column, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 
  * app.module 里 synchronize = NODE_ENV !== 'production' || DB_SYNC === 'true'，
  * 测试与本地开发环境 synchronize 恒为 true。若实体上仍留着 unique: true，
  * TypeORM 每次启动都会重建全表唯一索引，把迁移的结果悄悄顶掉 ——
- * 生产库上表现为「工号明明停用了还是不能复用」。
+ * 生产库上表现为「工号明明离职了还是不能复用」。
  */
 @Index('hr_employees_employeeNo_active_key', ['employeeNo'], {
   unique: true,
@@ -62,6 +62,15 @@ export class Employee {
 
   @Column({ type: 'date', nullable: true }) joinDate!: Date | string | null;
   @Column({ type: 'date', nullable: true }) leaveDate!: Date | string | null;
+
+  /**
+   * 离职原因。
+   *
+   * 设为离职时必填（服务端与前端都拦），恢复在职时清空 ——
+   * 该字段描述的是「当前处于离职状态」的原因，不是一次性的历史事件。
+   * 需要追溯历次离职的话看 audit_logs 的 employee:deactivate 记录。
+   */
+  @Column({ type: 'varchar', length: 200, nullable: true }) leaveReason!: string | null;
   /** 入职方式，旧系统限定 001 / 002 / 999 */
   @Column({ type: 'varchar', length: 10, nullable: true }) entryType!: string | null;
 

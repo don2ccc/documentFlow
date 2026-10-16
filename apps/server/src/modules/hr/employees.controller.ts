@@ -59,20 +59,26 @@ export class EmployeesController {
   }
 
   /**
- * 停用（逻辑删除）：置 active=false，记录仍在库中，可在「已停用」筛选下查到。
- * 保留历史，避免旧档案断链。
- */
-@Delete(':id')
+   * 离职（逻辑删除）：置 active=false 并记录离职原因与日期，记录仍在库中，
+   * 可在「已离职」筛选下查到。保留历史，避免旧档案断链。
+   *
+   * 离职原因必填，由 service 校验；绕开 UI 直接调接口同样会被拒。
+   */
+  @Delete(':id')
   @RequirePermission('hr:manage')
-  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.employees.remove(id, user.id);
+  remove(
+    @Param('id') id: string,
+    @Body() body: { reason?: string } | undefined,
+    @CurrentUser() user: AuthUser
+  ) {
+    return this.employees.remove(id, body?.reason, user.id);
   }
 
   /**
- * 彻底删除：物理移除行与照片文件，删除后无法再查询到。
- * 仅允许删除已停用的档案，避免误删在职员工。
- */
-@Delete(':id/permanent')
+   * 彻底删除：物理移除行与照片文件，删除后无法再查询到。
+   * 仅允许删除已离职的档案，避免误删在职员工。
+   */
+  @Delete(':id/permanent')
   @RequirePermission('hr:manage')
   removePermanent(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.employees.removePermanent(id, user.id);

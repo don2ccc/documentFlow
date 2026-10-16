@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Avatar, Button, Card, Col, DatePicker, Divider, Form, Input, Popconfirm, Row, Select, Space,
-  Table, Tag, TreeSelect, Typography, Upload, message
+  Alert, Avatar, Button, Card, Col, DatePicker, Divider, Form, Input, Modal, Popconfirm, Row,
+  Select, Space, Table, Tag, TreeSelect, Typography, Upload, message
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DataNode } from 'antd/es/tree';
@@ -102,6 +102,13 @@ export function EmployeesPage() {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [deptTree, setDeptTree] = useState<DataNode[]>([]);
   const [shopTree, setShopTree] = useState<DataNode[]>([]);
+
+  /** 离职原因弹窗 */
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  /** 记住是给谁离职，用于弹窗标题显示姓名 */
+  const [leaveTarget, setLeaveTarget] = useState<{ name: string; employeeNo: string } | null>(null);
 
   const editable = mode !== 'view';
 
@@ -256,17 +263,44 @@ export function EmployeesPage() {
     }
   };
 
+  const openLeaveDialog = () => {
+    if (!current) return;
+    setLeaveReason('');
+    setLeaveTarget({ name: current.name, employeeNo: current.employeeNo });
+    setLeaveOpen(true);
+  };
+
+  const closeLeaveDialog = () => {
+    if (leaveBusy) return;
+    setLeaveOpen(false);
+    setLeaveReason('');
+    setLeaveTarget(null);
+  };
+
   const onDeactivate = async () => {
     if (!current) return;
+    const reason = leaveReason.trim();
+    if (!reason) {
+      message.error('离职原因不能为空');
+      return;
+    }
+    setLeaveBusy(true);
     try {
-      await employeesApi.remove(current.id);
-      message.success('已停用，档案仍可在「已停用」筛选中查询');
+      await employeesApi.remove(current.id, reason);
+      message.success('已办理离职，档案仍可在「已离职」筛选中查询');
+      // 这里不能调 closeLeaveDialog()：它开头有 if (leaveBusy) return 的守卫，
+      // 而 leaveBusy 要到 finally 才置 false，那样成功分支反而关不掉弹窗。
+      setLeaveOpen(false);
+      setLeaveReason('');
+      setLeaveTarget(null);
       form.resetFields();
       setCurrent(null);
       setMode('view');
       load();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? '操作失败');
+    } finally {
+      setLeaveBusy(false);
     }
   };
 
@@ -291,7 +325,7 @@ export function EmployeesPage() {
       const d = await employeesApi.setActive(current.id, !current.active);
       setCurrent(d);
       fillForm(d);
-      message.success(d.active ? '已启用' : '已停用');
+      message.success(d.active ? '已复职' : '已离职');
       load();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? '操作失败');
@@ -349,7 +383,7 @@ export function EmployeesPage() {
         render: (v: string, r) => (
           <Space size={4}>
             <span>{v}</span>
-            {!r.active && <Tag color="default" style={{ marginInlineEnd: 0 }}>停用</Tag>}
+            {!r.active && <Tag color="default" style={{ marginInlineEnd: 0 }}>离职</Tag>}
           </Space>
         )
       },
@@ -368,7 +402,7 @@ export function EmployeesPage() {
         dataIndex: 'active',
         key: 'active',
         width: 80,
-        render: (v: boolean) => (v ? <Tag color="green">在职</Tag> : <Tag color="default">停用</Tag>)
+        render: (v: boolean) => (v ? <Tag color="green">在职</Tag> : <Tag color="default">离职</Tag>)
       },
       { title: '性别', dataIndex: 'gender', key: 'gender', width: 70, render: (v) => v ?? '-' },
       {
@@ -392,18 +426,16 @@ export function EmployeesPage() {
           <Button icon={<EditOutlined />} disabled={!canManage || mode !== 'view'} onClick={onEdit}>
             修改
           </Button>
-          <Popconfirm
-            title="确认停用该员工档案？"
-            description="停用后档案保留，可在「已停用」筛选下继续查询，也可随时恢复在职。"
-            onConfirm={onDeactivate}
+          <Button
+            icon={<StopOutlined />}
+            disabled={!canManage || !current || !current.active}
+            onClick={openLeaveDialog}
           >
-            <Button icon={<StopOutlined />} disabled={!canManage || !current || !current.active}>
-              停用
-            </Button>
-          </Popconfirm>
+            离职
+          </Button>
           <Popconfirm
             title="确认彻底删除？此操作不可恢复"
-            description="该档案及其照片会被永久移除，删除后无法再查询。如只是离职，建议改用「停用」。"
+            description="该档案及其照片会被永久移除，删除后无法再查询。如只是离职，建议改用「离职」。"
             okText="彻底删除"
             okButtonProps={{ danger: true }}
             onConfirm={onDestroy}
@@ -437,6 +469,23 @@ export function EmployeesPage() {
           ) : null
         }
       >
+        {current && !current.active && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={
+              <Space size={16} wrap>
+                <span>
+                  离职日期：<b>{current.leaveDate || '未记录'}</b>
+                </span>
+                <span>
+                  离职原因：<b>{current.leaveReason || '（未填写）'}</b>
+                </span>
+              </Space>
+            }
+          />
+        )}
         <Row gutter={16}>
           <Col span={19}>
             <Form form={form} layout="horizontal" labelCol={{ span: 7 }} wrapperCol={{ span: 17 }} disabled={!editable}>
@@ -725,7 +774,7 @@ export function EmployeesPage() {
               onChange={(v) => { setActiveFilter(v); setPage(1); }}
               options={[
                 { value: 'true', label: '在职' },
-                { value: 'false', label: '已停用' },
+                { value: 'false', label: '已离职' },
                 { value: '', label: '全部' }
               ]}
             />
@@ -752,6 +801,44 @@ export function EmployeesPage() {
           }}
         />
       </Card>
+
+      <Modal
+        open={leaveOpen}
+        title="办理离职"
+        okText="确认离职"
+        cancelText="取消"
+        okButtonProps={{ danger: true, disabled: !leaveReason.trim() }}
+        confirmLoading={leaveBusy}
+        onOk={onDeactivate}
+        onCancel={closeLeaveDialog}
+        maskClosable={!leaveBusy}
+        destroyOnHidden
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`将「${leaveTarget?.name ?? ''}（${leaveTarget?.employeeNo ?? ''}）」标记为离职`}
+          description="离职是逻辑删除：档案与照片保留，可在「已离职」筛选下继续查询，也可随时恢复在职。恢复后离职原因会被清空。"
+        />
+        <div style={{ marginBottom: 6 }}>离职原因 <span style={{ color: '#ff4d4f' }}>*</span></div>
+        <Input.TextArea
+          value={leaveReason}
+          onChange={(e) => setLeaveReason(e.target.value)}
+          placeholder="例如：个人原因辞职、合同到期、协商解除、退休、调岗"
+          maxLength={200}
+          showCount
+          rows={3}
+          autoFocus
+          onPressEnter={(e) => {
+            // 单行回车提交，多行要 Shift+Enter 换行
+            if (!e.shiftKey && leaveReason.trim()) onDeactivate();
+          }}
+        />
+        <div style={{ marginTop: 6, fontSize: 12, color: '#999' }}>
+          原因会同时写入员工档案与操作日志，请如实填写。
+        </div>
+      </Modal>
     </Space>
   );
 }

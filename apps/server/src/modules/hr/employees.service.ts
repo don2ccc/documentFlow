@@ -89,7 +89,7 @@ export class EmployeesService {
     if (query.workGroup) qb.andWhere('e.workGroup = :workGroup', { workGroup: query.workGroup });
     // 只认 'true' / 'false' 两种取值，其余（含空串）一律视为不筛选。
     // 不能写成 `query.active !== undefined` —— 空串会进来并被当成 false，
-    // 「全部」就变成了「只看已停用」。
+    // 「全部」就变成了「只看已离职」。
     if (query.active === 'true' || query.active === 'false') {
       qb.andWhere('e.active = :active', { active: query.active === 'true' });
     }
@@ -185,6 +185,10 @@ export class EmployeesService {
     if (active && !e.active) {
       await this.assertEmployeeNoFree(e.employeeNo, e.id);
       await this.assertIdCardFree(e.idCardNo ?? undefined, e.id);
+      // 复职后不再是离职状态，原因是当前状态的一部分，一并清掉。
+      // 历次离职原因留在 audit_logs 的 employee:deactivate 里。
+      e.leaveReason = null;
+      e.leaveDate = null;
     }
     e.active = active;
     await this.repo.save(e);
@@ -192,22 +196,36 @@ export class EmployeesService {
     return this.toDetail(e);
   }
 
-  /** 逻辑删除：置 active=false，与旧系统 Activated 位一致，记录仍可查询 */
-  async remove(id: string, operatorId: string) {
+  /**
+   * 离职（逻辑删除）：置 active=false 并记录离职原因与日期，行仍在库中。
+   *
+   * 原因必填：离职是要留痕的人事动作，没有原因的离职记录事后无从追溯。
+   * 前端也会拦一道，这里是最终防线 —— 绕过 UI 直接调接口同样必须给原因。
+   */
+  async remove(id: string, reason: string | undefined, operatorId: string) {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
+    const trimmed = (reason ?? '').trim();
+    if (!trimmed) throw new BadRequestException('离职原因不能为空');
+    if (trimmed.length > 200) throw new BadRequestException('离职原因不能超过 200 字');
     e.active = false;
+    e.leaveReason = trimmed;
+    e.leaveDate = new Date().toISOString().slice(0, 10);
     await this.repo.save(e);
-    await this.audit.log(operatorId, 'employee:deactivate', 'employee', id, { employeeNo: e.employeeNo });
+    await this.audit.log(operatorId, 'employee:deactivate', 'employee', id, {
+      employeeNo: e.employeeNo,
+      leaveReason: trimmed,
+      leaveDate: e.leaveDate
+    });
     return { ok: true };
   }
 
   /**
    * 彻底删除：物理删除该行与照片文件，删除后无法再查询到。
    *
-   * 与 remove()（停用）的区别：停用保留历史供查询，这里是真删。
+   * 与 remove()（离职）的区别：离职保留历史供查询，这里是真删。
    * 两道前置校验：
-   *   1. 在职员工必须先停用，避免误删；
+   *   1. 在职员工必须先办理离职，避免误删；
    *   2. 该员工在宿舍模块仍有入住记录时禁止删除 —— 宿舍那边用的是纯文本
    *      employeeNo 而非外键，删掉员工会留下找不到人的入住记录。
    *
@@ -217,7 +235,7 @@ export class EmployeesService {
     const e = await this.repo.findOneBy({ id });
     if (!e) throw new NotFoundException('员工不存在');
     if (e.active) {
-      throw new BadRequestException('在职员工不能直接删除，请先停用再删除');
+      throw new BadRequestException('在职员工不能直接删除，请先办理离职再删除');
     }
 
     // 宿舍入住记录用纯文本 employeeNo 关联，不是外键，删掉员工会留下找不到人的入住记录。
