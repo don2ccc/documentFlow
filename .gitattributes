@@ -1,0 +1,27 @@
+# 统一行尾：仓库内存 LF，检出到 Windows 时由 Git 自动转 CRLF。
+#
+# 为什么需要：
+#   本仓库在 Linux 服务器上开发，但经常在 Windows 上编辑。
+#   没有这条约束时，从 Windows 编辑后直接提交的文件会带着 CRLF 进仓库，
+#   结果是同一仓库里 LF/CRLF 混存 —— GitHub 上每次改动都显示整文件重写，
+#   更糟的是 .sh / .sql 混进 CRLF 会直接执行失败。
+#
+# eol=lf 保证工作区在所有平台都是 LF；Windows 编辑器读到 CRLF 也能正常处理。
+* text=auto eol=lf
+
+# 二进制不做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.dump binary
