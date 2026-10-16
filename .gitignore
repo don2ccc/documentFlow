@@ -7,6 +7,10 @@ build/
 *.log
 uploads/
 data/
+# 备份导出包：里面有员工照片、身份证号、工资、数据库口令。
+# 这类东西绝不能进版本库，即使仓库是私有的也不行 —— 历史一旦提交就很难彻底抹掉。
+backup-export/
+dist-backup-*/
 .DS_Store
 Thumbs.db
 .worktrees/
