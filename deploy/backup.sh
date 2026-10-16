@@ -17,7 +17,10 @@ set -euo pipefail
 
 APP_DIR=/opt/documentflow
 BACKUP_ROOT=/var/backups/documentflow
-KEEP=7
+# 保留 15 天。备份有 14 天延迟压缩比 7 天更有意义 ——
+# 7 天只能覆盖「上周忘了拷」这种失误，14 天才能覆盖「两周前才发现问题」。
+# 每次约 8.6 MB，15 份约 130 MB，相对 400+ GB 可用空间可以忽略。
+KEEP=15
 STAMP=$(date +%Y%m%d-%H%M%S)
 DEST="${BACKUP_ROOT}/${STAMP}"
 
