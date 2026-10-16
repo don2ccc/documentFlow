@@ -97,6 +97,43 @@ export function EmployeesPage() {
   const [mode, setMode] = useState<Mode>('view');
   const [current, setCurrent] = useState<EmployeeDetail | null>(null);
   const [photoNonce, setPhotoNonce] = useState(0);
+
+  /**
+   * 照片的 objectURL。
+   *
+   * 不能直接 <img src="/api/hr/employees/:id/photo">：原生图片请求不经过
+   * axios 拦截器，拿不到 Authorization 头，服务端 401，图片永远不显示。
+   * 所以用 axios 取回 blob 再套 objectURL。
+   *
+   * photoNonce 变化代表刚上传过新照片，依赖它重新取，避免看到旧图缓存。
+   */
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const id = current?.id;
+    if (!id || !current?.hasPhoto) {
+      setPhotoUrl(null);
+      return;
+    }
+    let disposed = false;
+    let created: string | null = null;
+    employeesApi
+      .getPhotoBlob(id)
+      .then((blob) => {
+        // 服务端出错时 axios 也会给出 blob（里面包着 JSON），这种不能当图片用
+        if (blob.type.includes('json')) throw new Error('照片接口返回了 JSON 而非图片');
+        if (disposed) return;
+        created = URL.createObjectURL(blob);
+        setPhotoUrl(created);
+      })
+      .catch(() => {
+        if (!disposed) setPhotoUrl(null);
+      });
+    return () => {
+      disposed = true;
+      // 不 revoke 的话每次换人/换图都会漏一个 blob，直到刷新页面才回收
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [current?.id, current?.hasPhoto, photoNonce]);
   /** 新增模式下先选好照片，等保存拿到 id 后再一并上传 */
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
@@ -104,8 +141,7 @@ export function EmployeesPage() {
   const [shopTree, setShopTree] = useState<DataNode[]>([]);
 
   /** 离职原因弹窗 */
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveOpen, setLeaveOpen] = useState(false);  const [leaveReason, setLeaveReason] = useState('');
   const [leaveBusy, setLeaveBusy] = useState(false);
   /** 记住是给谁离职，用于弹窗标题显示姓名 */
   const [leaveTarget, setLeaveTarget] = useState<{ name: string; employeeNo: string } | null>(null);
@@ -707,13 +743,16 @@ export function EmployeesPage() {
             <Card size="small" styles={{ body: { padding: 12, textAlign: 'center' } }}>
               {pendingUrl ? (
                 <Avatar shape="square" size={160} src={pendingUrl} style={{ border: '2px dashed #faad14' }} />
-              ) : current?.hasPhoto ? (
+              ) : current?.hasPhoto && photoUrl ? (
                 <Avatar
                   shape="square"
                   size={160}
-                  src={`${employeesApi.photoUrl(current.id)}?t=${photoNonce}`}
+                  src={photoUrl}
                   style={{ border: '2px solid #1677ff' }}
                 />
+              ) : current?.hasPhoto ? (
+                // 有照片但还没拿到 blob：加载中，别急着退成占位图标
+                <Avatar shape="square" size={160} style={{ background: '#f0f2f5' }} />
               ) : (
                 <Avatar shape="square" size={160} icon={<UserOutlined style={{ fontSize: 64 }} />} style={{ background: '#f0f2f5', color: '#bfbfbf' }} />
               )}

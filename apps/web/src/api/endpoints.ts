@@ -538,5 +538,15 @@ export const employeesApi = {
       })
       .then((r) => r.data);
   },
+  /**
+   * 取照片二进制。
+   *
+   * 不能用 <img src="/api/hr/employees/:id/photo">：那是浏览器原生请求，
+   * 不经过 axios 实例，也就拿不到请求拦截器加的 Authorization 头，
+   * 服务端一律返回 401，图片永远加载不出来。
+   * 所以改成用 axios 取 blob，再在页面上套 objectURL。
+   */
+  getPhotoBlob: (id: string) =>
+    api.get(`/hr/employees/${id}/photo`, { responseType: 'blob' }).then((r) => r.data as Blob),
   photoUrl: (id: string) => `/api/hr/employees/${id}/photo`
 };
