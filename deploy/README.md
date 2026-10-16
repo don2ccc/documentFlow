@@ -19,9 +19,67 @@
 
 ## 常用运维
 
-- 日志：`pm2 logs documentflow-api` / `pm2 logs documentflow-worker`
-- 备份：`pg_dump documentflow > backup.sql`；文档目录 `rsync -a /opt/documentflow/data/ backup/`
+- 日志：`journalctl -u documentflow-api -f` / `journalctl -u documentflow-worker -f`
 - LibreOffice 转换：Word/Excel/PPT 由 worker 进程调用 `libreoffice --headless` 转 PDF，中文字体需 `fonts-noto-cjk`
+
+## 备份与恢复
+
+**不要只跑 `pg_dump`。** 照片、文档、签名都存在文件系统里，
+数据库里只有一个文件名，`pg_dump` 看不到它们。
+
+备份由 systemd timer 每天 03:17 自动执行（`documentflow-backup.timer`），
+脚本是 `deploy/backup.sh`，产出在 `/var/backups/documentflow/<时间戳>/`：
+
+| 产物 | 内容 |
+| --- | --- |
+| `documentflow.dump` | 整库，`pg_dump -Fc` |
+| `data_documents.tgz` | 上传的文档 |
+| `data_previews.tgz` | PDF 预览缓存 |
+| `data_hr-photos.tgz` | 员工照片 |
+| `uploads_signatures.tgz` | 手写签名 |
+| `systemd-units.tgz` | 服务单元文件 |
+| `nginx-documentflow.conf` | nginx 站点配置 |
+| `app.env` | `.env` 备份（含密钥，权限 600） |
+| `MANIFEST.txt` | 清单，记录每个目录的文件数 |
+
+保留最近 7 份，多余的自动删除。
+
+### 常用命令
+
+```sh
+# 看有哪些备份
+./deploy/restore.sh --list
+
+# 校验某份备份能不能用（会建临时库导入并逐表比对行数，不影响生产）
+./deploy/restore.sh --verify /var/backups/documentflow/20261017-031700
+
+# 恢复文件
+./deploy/restore.sh --files /var/backups/documentflow/20261017-031700
+
+# 恢复数据库（破坏性；原库会先改名保留为 documentflow_pre_restore_<时间戳>）
+./deploy/restore.sh --db /var/backups/documentflow/20261017-031700 --yes
+```
+
+手动触发一次备份：
+
+```sh
+systemctl start documentflow-backup.service
+journalctl -u documentflow-backup -n 50
+systemctl show documentflow-backup.service -p Result   # 必须是 success
+```
+
+### 为什么脚本里到处都是 `die`
+
+历史上这个脚本每一步都带 `2>/dev/null || true`，
+它打包的是一个**已经不存在的目录** `apps/server/uploads`，
+照样打印 `[INFO]` 并以 0 退出，生成一个 45 字节的空壳。
+加上 `PG_BIN` 写死成 `postgresql/14`（实际是 18），
+这个脚本从来没有成功执行过一次，而 `/var/backups/documentflow` 一直不存在。
+
+所以现在的规则是：**宁可报错，不要假装成功。**
+路径不对、产出为空、文件数对不上、dump 读不出来 —— 任何一项不过就 exit 1，
+让 systemd 标记为失败。定期看一眼 `systemctl list-timers` 确认 `NEXT` 有时间，
+比什么都强。
 
 ## 本地开发（Windows）
 
