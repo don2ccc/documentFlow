@@ -743,18 +743,27 @@ export function EmployeesPage() {
             <Card size="small" styles={{ body: { padding: 12, textAlign: 'center' } }}>
               {pendingUrl ? (
                 <Avatar shape="square" size={160} src={pendingUrl} style={{ border: '2px dashed #faad14' }} />
-              ) : current?.hasPhoto && photoUrl ? (
+              ) : photoUrl ? (
                 <Avatar
                   shape="square"
                   size={160}
                   src={photoUrl}
                   style={{ border: '2px solid #1677ff' }}
                 />
-              ) : current?.hasPhoto ? (
-                // 有照片但还没拿到 blob：加载中，别急着退成占位图标
-                <Avatar shape="square" size={160} style={{ background: '#f0f2f5' }} />
               ) : (
-                <Avatar shape="square" size={160} icon={<UserOutlined style={{ fontSize: 64 }} />} style={{ background: '#f0f2f5', color: '#bfbfbf' }} />
+                // 三种情况都用默认头像，不留白：
+                //   1. 该员工压根没上传照片
+                //   2. 有照片，blob 还在路上
+                //   3. 有照片，但取图失败（401 / 文件丢失）
+                // 同时挂 icon：万一默认头像本身也加载不出来，
+                // antd 会自动退回图标，保证任何情况下都不会是空白框。
+                <Avatar
+                  shape="square"
+                  size={160}
+                  src="/default-avatar.jpg"
+                  icon={<UserOutlined style={{ fontSize: 64 }} />}
+                  style={{ background: '#f0f2f5', color: '#bfbfbf' }}
+                />
               )}
               {pendingUrl && (
                 <div style={{ marginTop: 8 }}>
