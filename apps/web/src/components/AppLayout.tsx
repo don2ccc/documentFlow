@@ -7,8 +7,9 @@ import {
   ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined,
 
 } from "@ant-design/icons";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { PageLoader } from "./PageLoader";
 import { versionsApi, AppVersion } from "../api/endpoints";
 import { StorageIndicator } from "./StorageIndicator";
 
@@ -220,6 +221,31 @@ export function AppLayout() {
     });
   }
 
+  // ---- 顶栏标题：原来顶栏重复了一遍侧边栏的品牌信息，改成显示当前位置 ----
+  const menuTitles = new Map<string, { label: string; group: string }>();
+  items.forEach((group: any) => {
+    (group.children ?? []).forEach((child: any) => {
+      menuTitles.set(child.key, { label: child.label, group: group.label });
+    });
+  });
+
+  const EXTRA_TITLES: Record<string, string> = {
+    "/account-settings": "帐号设置",
+    "/change-password": "修改密码"
+  };
+
+  function resolveTitle(pathname: string): { label: string; group: string } {
+    const hit = menuTitles.get(pathname);
+    if (hit) return hit;
+    if (EXTRA_TITLES[pathname]) return { label: EXTRA_TITLES[pathname], group: "个人中心" };
+    if (/^\/applications\/[^/]+$/.test(pathname)) return { label: "申请详情", group: "WorkFlow管理" };
+    if (/^\/documents\/[^/]+$/.test(pathname)) return { label: "文档详情", group: "WorkFlow管理" };
+    if (/^\/admin\/workflows\/[^/]+$/.test(pathname)) return { label: "流程编辑", group: "系统管理" };
+    return { label: "SPO 办公系统", group: "企业协同中枢平台" };
+  }
+
+  const current = resolveTitle(location.pathname);
+
   return (
     <>
       <style>{SIDEBAR_CSS}</style>
@@ -259,17 +285,13 @@ export function AppLayout() {
       </Sider>
       <Layout>
         <Header style={{ background: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", paddingInline: 24, boxShadow: "0 1px 4px rgba(15, 23, 42, 0.06)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)", border: "1px solid rgba(15, 23, 42, 0.06)" }}>
-              <img src="/yageo-logo.png" alt="YAGEO" style={{ width: 32, height: 32, objectFit: "contain" }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", letterSpacing: 0.2 }}>SPO 办公系统</span>
-                <span style={{ background: "linear-gradient(90deg, #ff6b1a 0%, #ff8c4a 100%)", color: "#ffffff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 5, letterSpacing: 0.4 }}>PRO</span>
-              </div>
-              <span style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.55)", marginTop: 2 }}>企业协同中枢平台</span>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2, minWidth: 0 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", letterSpacing: 0.2 }}>
+              {current.label}
+            </span>
+            <span style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.45)", marginTop: 2 }}>
+              {current.group}
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Badge dot style={{ marginRight: 16 }}>
@@ -289,7 +311,9 @@ export function AppLayout() {
           </div>
         </Header>
         <Content style={{ margin: 24 }}>
-          <Outlet />
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
