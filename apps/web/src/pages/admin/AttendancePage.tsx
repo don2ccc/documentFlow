@@ -604,7 +604,8 @@ export function AttendancePage() {
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
               <p className="ant-upload-text">点击或拖拽文件到此处</p>
               <p className="ant-upload-hint">
-                支持中控考勤机导出的原卡数据，需包含「姓名」「考勤号码」「日期时间」列，单次最多 10 万条
+                支持中控考勤机导出的原卡数据，需包含「姓名」「考勤号码」「日期时间」列，单次最多 10 万条。
+                文件内所有员工统一按上面选择的班次计算；不同岗位班次不同时，请分开上传。
               </p>
             </Upload.Dragger>
           </div>
