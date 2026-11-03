@@ -345,7 +345,7 @@ export function AttendancePage() {
     { title: '编码', dataIndex: 'code', width: 110 },
     { title: '班次名称', dataIndex: 'name', width: 140 },
     {
-      title: '班次时间', dataIndex: 'segments',
+      title: '班次时间', dataIndex: 'segments', width: 260,
       render: (segments: AttendanceShiftItem['segments']) => (
         <Space size={6} wrap>
           <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
@@ -547,6 +547,7 @@ export function AttendancePage() {
         columns={shiftColumns}
         dataSource={shifts}
         pagination={false}
+        scroll={{ x: 900 }}
         locale={{
           emptyText: (
             <Empty
