@@ -61,5 +61,7 @@ describe('AppLayout admin menu', () => {
     // 展开 HR 管理：没有 hr:view，不应出现员工档案
     await expand('HR管理', 'hr');
     expect(screen.queryByText('员工档案')).not.toBeInTheDocument();
+    // 没有 hr:attendance:view，考勤分析也不该出现
+    expect(screen.queryByText('HR考勤分析')).not.toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import {
   ApartmentOutlined, SafetyCertificateOutlined, LogoutOutlined, UserOutlined,
   SettingOutlined, ProjectOutlined, SearchOutlined, DatabaseOutlined, HistoryOutlined,
   ToolOutlined, IdcardOutlined, HomeOutlined, SkinOutlined, BankOutlined, ClusterOutlined,
-
+  BarChartOutlined,
 } from "@ant-design/icons";
 import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
@@ -206,6 +206,9 @@ export function AppLayout() {
         // 只读权限即可查看档案，写操作由 hr:manage 控制
         ...(has("hr:view") || user?.roles?.includes("sys_admin")
           ? [{ key: "/hr/employees", icon: <IdcardOutlined />, label: "员工档案" }]
+          : []),
+        ...(has("hr:attendance:view") || user?.roles?.includes("sys_admin")
+          ? [{ key: "/hr/attendance", icon: <BarChartOutlined />, label: "HR考勤分析" }]
           : []),
         { key: "/hr", icon: <TeamOutlined />, label: "（正在开发中）" }
       ]

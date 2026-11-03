@@ -17,7 +17,7 @@ const BACKEND_PERMISSIONS = [
   // 行政管理
   'dormitory:manage',
   // HR管理
-  'hr:view', 'hr:manage',
+  'hr:view', 'hr:manage', 'hr:attendance:view',
   // 系统管理
   'user:manage', 'role:manage', 'category:manage', 'department:manage',
   'workflow:manage', 'workshop:manage', 'setting:manage', 'audit:view',
@@ -46,7 +46,8 @@ const PERM_CATEGORY: Record<string, string> = {
   'workshop:manage': 'system',
   'dormitory:manage': 'admin',
   'hr:view': 'hr',
-  'hr:manage': 'hr'
+  'hr:manage': 'hr',
+  'hr:attendance:view': 'hr'
 };
 
 const VALID_CATEGORIES = ['workflow', 'admin', 'production', 'hr', 'system'];
@@ -72,6 +73,7 @@ describe('角色权限分组映射', () => {
   it('HR 权限归到 HR管理，不落在系统管理（曾经的 bug）', () => {
     expect(PERM_CATEGORY['hr:view']).toBe('hr');
     expect(PERM_CATEGORY['hr:manage']).toBe('hr');
+    expect(PERM_CATEGORY['hr:attendance:view']).toBe('hr');
   });
 
   it('menu:* 已废弃，不应再出现在映射表里', () => {

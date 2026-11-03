@@ -6,7 +6,8 @@ const TITLES: Record<string, string> = {
   "/admin/dormitory": "宿舍管理",
   "/admin/labor-protection": "劳保用品",
   "/production": "生产管理",
-  "/hr": "HR管理"
+  "/hr": "HR管理",
+  "/hr/attendance": "HR考勤分析"
 };
 
 export function ComingSoonPage() {

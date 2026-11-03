@@ -54,7 +54,8 @@ const PERM_CATEGORY: Record<string, string> = {
   "workshop:manage": "system",
   "dormitory:manage": "admin",
   "hr:view": "hr",
-  "hr:manage": "hr"
+  "hr:manage": "hr",
+  "hr:attendance:view": "hr"
 };
 
 /**

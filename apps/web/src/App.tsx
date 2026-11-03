@@ -116,6 +116,7 @@ export function App() {
                   <Route path="/production" element={<ComingSoonPage />} />
                   <Route path="/hr" element={<ComingSoonPage />} />
                   <Route path="/hr/employees" element={<EmployeesPage />} />
+                  <Route path="/hr/attendance" element={<ComingSoonPage />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Route>
