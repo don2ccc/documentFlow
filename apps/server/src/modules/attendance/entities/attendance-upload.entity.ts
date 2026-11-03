@@ -28,6 +28,6 @@ export class AttendanceUpload {
   @Column({ type: 'int', default: 0 }) resultCount!: number;
 
   @Column({ type: 'uuid', nullable: true }) createdBy!: string | null;
-  @Column({ length: 50, nullable: true }) createdByName!: string | null;
+  @Column({ type: 'varchar', length: 50, nullable: true }) createdByName!: string | null;
   @Column({ type: 'timestamptz', default: () => 'now()' }) createdAt!: Date;
 }

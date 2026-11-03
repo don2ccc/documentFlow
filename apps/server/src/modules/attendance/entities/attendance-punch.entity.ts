@@ -11,10 +11,10 @@ export class AttendancePunch {
 
   @Column({ length: 40 }) employeeNo!: string;
   @Column({ length: 50 }) employeeName!: string;
-  @Column({ length: 100, nullable: true }) department!: string | null;
+  @Column({ type: 'varchar', length: 100, nullable: true }) department!: string | null;
 
   /** YYYY-MM-DD HH:mm:ss（服务器本地时间，不涉及时区换算） */
   @Column({ length: 19 }) punchAt!: string;
 
-  @Column({ length: 20, nullable: true }) machine!: string | null;
+  @Column({ type: 'varchar', length: 20, nullable: true }) machine!: string | null;
 }

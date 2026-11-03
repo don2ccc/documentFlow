@@ -24,10 +24,10 @@ export class AttendanceDaily {
 
   @Column({ length: 40 }) employeeNo!: string;
   @Column({ length: 50 }) employeeName!: string;
-  @Column({ length: 100, nullable: true }) department!: string | null;
+  @Column({ type: 'varchar', length: 100, nullable: true }) department!: string | null;
 
-  @Column({ length: 8, nullable: true }) firstIn!: string | null;
-  @Column({ length: 8, nullable: true }) lastOut!: string | null;
+  @Column({ type: 'varchar', length: 8, nullable: true }) firstIn!: string | null;
+  @Column({ type: 'varchar', length: 8, nullable: true }) lastOut!: string | null;
   @Column({ type: 'int', default: 0 }) punchCount!: number;
 
   /** 班次时间段内的工作分钟数（不含班次结束后的加班） */
@@ -42,7 +42,7 @@ export class AttendanceDaily {
 
   /** 正常 / 迟到 / 早退 / 迟到/早退 / 缺卡 / 异常 */
   @Column({ length: 20 }) status!: string;
-  @Column({ length: 200, nullable: true }) abnormal!: string | null;
+  @Column({ type: 'varchar', length: 200, nullable: true }) abnormal!: string | null;
 
   @Column({ type: 'jsonb', default: () => "'[]'" }) segments!: DailySegmentDetail[];
 }
