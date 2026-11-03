@@ -22,6 +22,7 @@ import { CoreSettingsModule } from './modules/core-settings/core-settings.module
 import { DormitoryModule } from './modules/dormitory/dormitory.module';
 import { SystemMonitorModule } from './modules/system-monitor/system-monitor.module';
 import { HrModule } from './modules/hr/hr.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -52,7 +53,8 @@ import { HrModule } from './modules/hr/hr.module';
     CoreSettingsModule,
     DormitoryModule,
     SystemMonitorModule,
-    HrModule
+    HrModule,
+    AttendanceModule
   ],
   controllers: [HealthController],
   providers: [

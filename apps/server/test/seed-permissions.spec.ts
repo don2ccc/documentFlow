@@ -49,6 +49,7 @@ describe('权限清单 seed.PERMISSIONS', () => {
 
   it('包含 HR 考勤分析权限', () => {
     expect(codes).toContain('hr:attendance:view');
+    expect(codes).toContain('hr:attendance:manage');
   });
 
   it('包含申请查询的三个范围权限', () => {
@@ -57,7 +58,7 @@ describe('权限清单 seed.PERMISSIONS', () => {
     expect(codes).toContain('application:query:self');
   });
 
-  it('总计 22 条（原先 26 条减去 5 条 menu:*，加上 hr:attendance:view）', () => {
-    expect(codes.length).toBe(22);
+  it('总计 23 条（原先 26 条减去 5 条 menu:*，加上 2 条考勤权限）', () => {
+    expect(codes.length).toBe(23);
   });
 });

@@ -550,3 +550,123 @@ export const employeesApi = {
     api.get(`/hr/employees/${id}/photo`, { responseType: 'blob' }).then((r) => r.data as Blob),
   photoUrl: (id: string) => `/api/hr/employees/${id}/photo`
 };
+
+/* ---------------- HR 考勤分析 ---------------- */
+
+export interface AttendanceSegment { start: string; end: string }
+export interface AttendanceShiftItem {
+  id: string;
+  code: string;
+  name: string;
+  segments: AttendanceSegment[];
+  standardMinutes: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceUploadItem {
+  id: string;
+  fileName: string;
+  shiftId: string;
+  shiftCode: string;
+  shiftName: string;
+  shiftSegments: AttendanceSegment[];
+  standardMinutes: number;
+  periodStart: string;
+  periodEnd: string;
+  punchCount: number;
+  employeeCount: number;
+  resultCount: number;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface AttendanceSegmentDetail {
+  start: string;
+  end: string;
+  in: string | null;
+  out: string | null;
+  minutes: number;
+  missing: boolean;
+}
+
+export interface AttendanceDailyItem {
+  id: string;
+  uploadId: string;
+  workDate: string;
+  employeeNo: string;
+  employeeName: string;
+  department: string | null;
+  firstIn: string | null;
+  lastOut: string | null;
+  punchCount: number;
+  normalMinutes: number;
+  workMinutes: number;
+  overtimeMinutes: number;
+  lateMinutes: number;
+  earlyMinutes: number;
+  status: string;
+  abnormal: string | null;
+  segments: AttendanceSegmentDetail[];
+}
+
+export interface AttendanceSummary {
+  days: number;
+  employees: number;
+  workMinutes: number;
+  overtimeMinutes: number;
+  lateCount: number;
+  earlyCount: number;
+  missingCount: number;
+  normalCount: number;
+}
+
+export interface AttendanceResults {
+  upload: AttendanceUploadItem | null;
+  items: AttendanceDailyItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: AttendanceSummary;
+}
+
+export interface AttendanceResultsQuery {
+  uploadId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  keyword?: string;
+  department?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export const attendanceApi = {
+  listShifts: () => api.get<AttendanceShiftItem[]>('/attendance/shifts').then((r) => r.data),
+  createShift: (body: { code: string; name: string; segments: AttendanceSegment[]; standardMinutes: number; active?: boolean }) =>
+    api.post<AttendanceShiftItem>('/attendance/shifts', body).then((r) => r.data),
+  updateShift: (id: string, body: Partial<{ code: string; name: string; segments: AttendanceSegment[]; standardMinutes: number; active: boolean }>) =>
+    api.patch<AttendanceShiftItem>(`/attendance/shifts/${id}`, body).then((r) => r.data),
+  removeShift: (id: string) => api.delete(`/attendance/shifts/${id}`).then((r) => r.data),
+
+  listUploads: () => api.get<AttendanceUploadItem[]>('/attendance/uploads').then((r) => r.data),
+  upload: (file: File, shiftId: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('shiftId', shiftId);
+    return api
+      .post<{ upload: AttendanceUploadItem; skipped: number; sheetName: string }>('/attendance/uploads', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 180_000
+      })
+      .then((r) => r.data);
+  },
+  removeUpload: (id: string) => api.delete(`/attendance/uploads/${id}`).then((r) => r.data),
+
+  results: (params: AttendanceResultsQuery = {}) =>
+    api.get<AttendanceResults>('/attendance/results', { params }).then((r) => r.data),
+  exportResults: (uploadId: string, params: AttendanceResultsQuery = {}) =>
+    api.get<Blob>(`/attendance/uploads/${uploadId}/export`, { params, responseType: 'blob' }).then((r) => r.data)
+};

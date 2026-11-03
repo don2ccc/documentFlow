@@ -17,7 +17,7 @@ const BACKEND_PERMISSIONS = [
   // 行政管理
   'dormitory:manage',
   // HR管理
-  'hr:view', 'hr:manage', 'hr:attendance:view',
+  'hr:view', 'hr:manage', 'hr:attendance:view', 'hr:attendance:manage',
   // 系统管理
   'user:manage', 'role:manage', 'category:manage', 'department:manage',
   'workflow:manage', 'workshop:manage', 'setting:manage', 'audit:view',
@@ -47,7 +47,8 @@ const PERM_CATEGORY: Record<string, string> = {
   'dormitory:manage': 'admin',
   'hr:view': 'hr',
   'hr:manage': 'hr',
-  'hr:attendance:view': 'hr'
+  'hr:attendance:view': 'hr',
+  'hr:attendance:manage': 'hr'
 };
 
 const VALID_CATEGORIES = ['workflow', 'admin', 'production', 'hr', 'system'];

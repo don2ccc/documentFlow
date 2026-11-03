@@ -77,6 +77,9 @@ const DormitoryPage = lazy(() =>
 const EmployeesPage = lazy(() =>
   import('./pages/admin/EmployeesPage').then((m) => ({ default: m.EmployeesPage }))
 );
+const AttendancePage = lazy(() =>
+  import('./pages/admin/AttendancePage').then((m) => ({ default: m.AttendancePage }))
+);
 const ComingSoonPage = lazy(() =>
   import('./pages/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage }))
 );
@@ -116,7 +119,7 @@ export function App() {
                   <Route path="/production" element={<ComingSoonPage />} />
                   <Route path="/hr" element={<ComingSoonPage />} />
                   <Route path="/hr/employees" element={<EmployeesPage />} />
-                  <Route path="/hr/attendance" element={<ComingSoonPage />} />
+                  <Route path="/hr/attendance" element={<AttendancePage />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Route>

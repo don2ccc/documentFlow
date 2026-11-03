@@ -43,6 +43,7 @@ export const PERMISSIONS = [
   ['查看员工档案', 'hr:view'],
   ['管理员工档案', 'hr:manage'],
   ['查看考勤分析', 'hr:attendance:view'],
+  ['管理考勤分析', 'hr:attendance:manage'],
 
   // —— 系统管理 ——
   ['管理用户', 'user:manage'],

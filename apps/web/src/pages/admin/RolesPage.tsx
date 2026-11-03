@@ -55,7 +55,8 @@ const PERM_CATEGORY: Record<string, string> = {
   "dormitory:manage": "admin",
   "hr:view": "hr",
   "hr:manage": "hr",
-  "hr:attendance:view": "hr"
+  "hr:attendance:view": "hr",
+  "hr:attendance:manage": "hr"
 };
 
 /**
