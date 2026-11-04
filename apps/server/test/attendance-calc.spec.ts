@@ -223,6 +223,65 @@ describe('computeDailyResults', () => {
   });
 });
 
+describe('OT 申请（加班单）', () => {
+  const ot = (startAt: string, endAt: string) => ({
+    employeeNo: '10000001',
+    startAt,
+    endAt,
+    otCode: 'OTS'
+  });
+
+  it('有 OT 申请：按申请区间全天计加班，不判迟到早退缺卡', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:19:00'),
+      punch('2026-11-01 11:34:00'),
+      punch('2026-11-01 12:40:00'),
+      punch('2026-11-01 16:34:00'),
+      punch('2026-11-01 17:00:00'),
+      punch('2026-11-01 20:05:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    // 07:30-20:00 = 750 分钟，全部算加班
+    expect(row.overtimeMinutes).toBe(750);
+    expect(row.standardMinutes).toBe(0);
+    expect(row.lateMinutes).toBe(0);
+    expect(row.earlyMinutes).toBe(0);
+    expect(row.status).toBe('OT加班');
+    expect(row.abnormal).toContain('OT 申请');
+    expect(row.abnormal).toContain('07:30-20:00');
+  });
+
+  it('OT 申请区间内打卡不满时按实际时长，仍按 30 分钟向下取整', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:30:00'),
+      punch('2026-11-01 16:44:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    // 07:30-16:44 = 554 分钟 → 540
+    expect(row.overtimeMinutes).toBe(540);
+    expect(row.status).toBe('OT加班');
+  });
+
+  it('OT 申请超出部分的打卡不计入加班', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:00:00'),
+      punch('2026-11-01 21:30:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    expect(row.overtimeMinutes).toBe(750);
+  });
+
+  it('没有 OT 申请的员工仍按常规口径计算', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:40:00'),
+      punch('2026-11-01 11:30:00'),
+      punch('2026-11-01 12:30:00'),
+      punch('2026-11-01 16:20:00')
+    ], []);
+    expect(row.status).toBe('迟到/早退');
+    expect(row.lateMinutes).toBe(10);
+    expect(row.earlyMinutes).toBe(10);
+    expect(row.standardMinutes).toBe(480);
+  });
+});
+
 describe('computeDailyResultsForShifts（原始数据自带班次列）', () => {
   const shifts = [
     { code: 'M10', name: '白班1#', ...M10 },

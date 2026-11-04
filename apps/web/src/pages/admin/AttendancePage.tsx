@@ -19,6 +19,7 @@ import { brand, statusColor, tokens } from '../../theme';
 
 const STATUS_OPTIONS = [
   { value: '正常', label: '正常' },
+  { value: 'OT加班', label: 'OT加班' },
   { value: '迟到', label: '迟到' },
   { value: '早退', label: '早退' },
   { value: '迟到/早退', label: '迟到/早退' },
@@ -28,6 +29,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_TAG_COLOR: Record<string, string> = {
   正常: statusColor.success,
+  OT加班: brand.primary,
   迟到: '#fa8c16',
   早退: '#fa541c',
   '迟到/早退': statusColor.danger,
@@ -306,8 +308,9 @@ export function AttendancePage() {
     setUploading(true);
     try {
       const res = await attendanceApi.upload(file, uploadShiftId);
+      const otText = res.otCount ? `，OT 申请 ${res.otCount} 条` : '';
       message.success(
-        `已解析 ${res.upload.punchCount} 条打卡（${res.upload.employeeCount} 人），生成 ${res.upload.resultCount} 条结果`
+        `已解析 ${res.upload.punchCount} 条打卡（${res.upload.employeeCount} 人），生成 ${res.upload.resultCount} 条结果${otText}`
       );
       setUploadOpen(false);
       setFileList([]);
@@ -553,6 +556,7 @@ export function AttendancePage() {
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: tokens.space.md, fontSize: 12 }}>
               当前批次：{currentUpload.fileName} · 班次 {currentUpload.shiftSummary ?? `${currentUpload.shiftCode} ${currentUpload.shiftName}`} ·
               {' '}{currentUpload.punchCount} 条打卡 / {currentUpload.employeeCount} 人
+              {currentUpload.otCount ? ` · OT 申请 ${currentUpload.otCount} 条` : ''}
               {currentUpload.createdByName ? ` · 上传人 ${currentUpload.createdByName}` : ''}
             </Typography.Text>
           )}
@@ -612,6 +616,8 @@ export function AttendancePage() {
                 加班时段不参与迟到 / 早退，加班时段可以不打卡。正常工时 = 班次配置的标准工时（如 480 分钟 = 8 小时）；
                 工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；加班 = 工作时长超过正常工时的部分，
                 以 30 分钟为单位向下取整（不足 30 分钟舍去）；正常班次时段内有应打卡点没打才标记「缺卡」，工时仍按实际打卡计算。
+                文件里带「OT申请」表时，当天有 OT 申请的员工按申请区间计算：区间内的打卡全部算加班（仍按 30 分钟向下取整），
+                不判迟到 / 早退 / 缺卡，状态显示「OT加班」；没有 OT 申请的按上面常规口径计算。
                 跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。
               </Typography.Text>
             )}
@@ -701,6 +707,7 @@ export function AttendancePage() {
               <p className="ant-upload-hint">
                 支持中控考勤机导出的原卡数据，需包含「姓名」「考勤号码」「日期时间」列，可带「班次」列，单次最多 10 万条。
                 「班次」列的值（如 M10、M21）需与「班次管理」中的编码一致，大小写和首尾空格会自动忽略。
+                同一个文件里如果有「OT申请」表（员工编号 / 开始日期时间 / 结束日期时间 / 加班代码），会自动识别并参与计算。
               </p>
             </Upload.Dragger>
           </div>

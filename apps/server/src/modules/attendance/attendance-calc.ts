@@ -39,6 +39,17 @@ export interface PunchInput {
   shiftCode?: string | null;
 }
 
+/** OT（加班）申请：某员工某段区间内的打卡全部算加班 */
+export interface OtApplicationInput {
+  employeeNo: string;
+  /** YYYY-MM-DD HH:mm:ss */
+  startAt: string;
+  /** YYYY-MM-DD HH:mm:ss */
+  endAt: string;
+  /** 加班代码，如 OTS */
+  otCode?: string | null;
+}
+
 export interface DailyResult {
   workDate: string;
   employeeNo: string;
@@ -327,7 +338,12 @@ function buildSegmentDetail(
   return { segments, missingPoints };
 }
 
-function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: PunchInput[]): DailyResult {
+function calcGroup(
+  window: ShiftWindow,
+  config: NamedShiftConfig,
+  punches: PunchInput[],
+  otRanges: Array<{ start: Date; end: Date; otCode: string | null }> = []
+): DailyResult {
   const times = punches.map((p) => parseDateTime(p.punchAt)).sort((a, b) => a.getTime() - b.getTime());
   const first = times[0];
   const last = times[times.length - 1];
@@ -339,12 +355,53 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
   const extraMs = Math.max(0, last.getTime() - window.end.getTime());
   const workMs = normalMs + extraMs;
   const workMinutes = Math.floor(workMs / MINUTES_MS);
-  const overtimeMinutes = Math.floor(
-    Math.max(0, workMinutes - config.standardMinutes) / OVERTIME_UNIT_MINUTES
-  ) * OVERTIME_UNIT_MINUTES;
 
   const { segments, missingPoints } = buildSegmentDetail(window, times, config.standardMinutes);
   const regularEnd = regularEndOf(window, config.standardMinutes);
+  const punchCount = punches.length;
+  const sample = punches[0];
+
+  // 有 OT 申请：按申请区间裁剪后的实际打卡全部算加班，不判迟到 / 早退 / 缺卡
+  const applied = otRanges.filter((range) => (
+    range.start.getTime() < window.end.getTime() && range.end.getTime() > window.start.getTime()
+  ));
+  if (applied.length) {
+    let otMs = 0;
+    for (const range of applied) {
+      const start = Math.max(first.getTime(), range.start.getTime());
+      const end = Math.min(last.getTime(), range.end.getTime());
+      otMs += Math.max(0, end - start);
+    }
+    const overtimeMinutes = Math.floor(otMs / MINUTES_MS / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
+    const rangeText = applied
+      .map((range) => `${formatTime(range.start).slice(0, 5)}-${formatTime(range.end).slice(0, 5)}`)
+      .join('、');
+    const codeText = applied.map((range) => range.otCode).filter(Boolean)[0];
+    return {
+      workDate: window.date,
+      employeeNo: sample.employeeNo,
+      employeeName: sample.employeeName,
+      department: sample.department,
+      shiftCode: config.code || null,
+      shiftName: config.name ?? null,
+      firstIn: formatTime(first),
+      lastOut: formatTime(last),
+      punchCount,
+      standardMinutes: 0,
+      normalMinutes: 0,
+      workMinutes,
+      overtimeMinutes,
+      lateMinutes: 0,
+      earlyMinutes: 0,
+      status: 'OT加班',
+      abnormal: `OT 申请 ${rangeText}${codeText ? `（${codeText}）` : ''}，全天计加班`,
+      segments
+    };
+  }
+
+  const overtimeMinutes = Math.floor(
+    Math.max(0, workMinutes - config.standardMinutes) / OVERTIME_UNIT_MINUTES
+  ) * OVERTIME_UNIT_MINUTES;
 
   const lateMinutes = first.getTime() > window.start.getTime()
     ? Math.ceil((first.getTime() - window.start.getTime()) / MINUTES_MS)
@@ -354,7 +411,6 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
     ? Math.ceil((regularEnd.getTime() - last.getTime()) / MINUTES_MS)
     : 0;
 
-  const punchCount = punches.length;
   // 正常班次时段内有应打卡点没打才算缺卡；加班时段的空缺不计。
   const missingCard = missingPoints.length > 0;
 
@@ -370,7 +426,6 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
   if (earlyMinutes > 0) reasons.push(`早退 ${earlyMinutes} 分钟`);
   if (missingCard) reasons.push(`缺卡：${missingPoints.join('、')}`);
 
-  const sample = punches[0];
   return {
     workDate: window.date,
     employeeNo: sample.employeeNo,
@@ -403,7 +458,8 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
 export function computeDailyResultsForShifts(
   shifts: NamedShiftConfig[],
   punches: PunchInput[],
-  defaultShift?: NamedShiftConfig
+  defaultShift?: NamedShiftConfig,
+  otApplications: OtApplicationInput[] = []
 ): DailyResult[] {
   if (!punches.length) return [];
 
@@ -414,6 +470,13 @@ export function computeDailyResultsForShifts(
 
   const normalizeCode = (code: string) => code.trim().toUpperCase();
   const byCode = new Map(shifts.map((s) => [normalizeCode(s.code), s]));
+  const otByEmployee = new Map<string, OtApplicationInput[]>();
+  for (const app of otApplications) {
+    const key = app.employeeNo.trim();
+    const list = otByEmployee.get(key);
+    if (list) list.push(app);
+    else otByEmployee.set(key, [app]);
+  }
   const windowCache = new Map<string, ShiftWindow>();
   const getWindow = (code: string, date: string) => {
     const key = `${code}|${date}`;
@@ -454,7 +517,15 @@ export function computeDailyResultsForShifts(
   }
 
   return Array.from(groups.values())
-    .map(({ window, shift, punches: list }) => calcGroup(window, shift, list))
+    .map(({ window, shift, punches: list }) => {
+      const employeeNo = list[0].employeeNo;
+      const ranges = (otByEmployee.get(employeeNo) ?? []).map((r) => ({
+        start: parseDateTime(r.startAt),
+        end: parseDateTime(r.endAt),
+        otCode: r.otCode ?? null
+      }));
+      return calcGroup(window, shift, list, ranges);
+    })
     .sort((a, b) => {
       if (a.workDate !== b.workDate) return a.workDate.localeCompare(b.workDate);
       if (a.employeeNo !== b.employeeNo) return a.employeeNo.localeCompare(b.employeeNo);
@@ -463,7 +534,11 @@ export function computeDailyResultsForShifts(
 }
 
 /** 单班次计算的便捷入口（默认班次逻辑、历史调用与单测使用）。 */
-export function computeDailyResults(config: ShiftConfig, punches: PunchInput[]): DailyResult[] {
+export function computeDailyResults(
+  config: ShiftConfig,
+  punches: PunchInput[],
+  otApplications: OtApplicationInput[] = []
+): DailyResult[] {
   const shift: NamedShiftConfig = { ...config, code: 'DEFAULT', name: '默认班次' };
-  return computeDailyResultsForShifts([shift], punches, shift);
+  return computeDailyResultsForShifts([shift], punches, shift, otApplications);
 }

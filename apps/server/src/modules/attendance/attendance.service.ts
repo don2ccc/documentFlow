@@ -10,6 +10,7 @@ import { CreateShiftDto } from './dto/create-shift.dto';
 import { ListResultsQueryDto } from './dto/list-results-query.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
 import { AttendanceDaily } from './entities/attendance-daily.entity';
+import { AttendanceOtApplication } from './entities/attendance-ot-application.entity';
 import { AttendancePunch } from './entities/attendance-punch.entity';
 import { AttendanceShift } from './entities/attendance-shift.entity';
 import { AttendanceUpload, ShiftSnapshotEntry } from './entities/attendance-upload.entity';
@@ -45,6 +46,8 @@ export class AttendanceService {
     @InjectRepository(AttendanceUpload) private readonly uploads: Repository<AttendanceUpload>,
     @InjectRepository(AttendancePunch) private readonly punches: Repository<AttendancePunch>,
     @InjectRepository(AttendanceDaily) private readonly dailies: Repository<AttendanceDaily>,
+    @InjectRepository(AttendanceOtApplication)
+    private readonly otApplications: Repository<AttendanceOtApplication>,
     private readonly dataSource: DataSource,
     private readonly audit: AuditService
   ) {}
@@ -214,7 +217,7 @@ export class AttendanceService {
 
     let results;
     try {
-      results = computeDailyResultsForShifts(shiftDefs, punches, defaultDef);
+      results = computeDailyResultsForShifts(shiftDefs, punches, defaultDef, parsed.otApplications);
     } catch (e: any) {
       throw new BadRequestException(e?.message ?? '考勤计算失败');
     }
@@ -244,9 +247,24 @@ export class AttendanceService {
         punchCount: parsed.punches.length,
         employeeCount,
         resultCount: results.length,
+        otCount: parsed.otApplications.length,
         createdBy: user.id,
         createdByName: user.username
       }));
+
+      const otRows = parsed.otApplications.map((o) => manager.create(AttendanceOtApplication, {
+        uploadId: header.id,
+        employeeNo: o.employeeNo,
+        employeeName: o.employeeName,
+        workDate: o.startAt.slice(0, 10),
+        startAt: o.startAt,
+        endAt: o.endAt,
+        otCode: o.otCode,
+        shiftCode: o.shiftCode
+      }));
+      for (let i = 0; i < otRows.length; i += 1000) {
+        await manager.insert(AttendanceOtApplication, otRows.slice(i, i + 1000));
+      }
 
       const punchRows = punches.map((p) => manager.create(AttendancePunch, {
         uploadId: header.id,
@@ -276,9 +294,17 @@ export class AttendanceService {
     });
 
     this.logger.log(
-      `考勤上传完成 ${fileName}: ${parsed.punches.length} 条打卡 / ${results.length} 条日结果 (${summary})`
+      `考勤上传完成 ${fileName}: ${parsed.punches.length} 条打卡 / ${results.length} 条日结果 (${summary})` +
+      (parsed.otApplications.length ? ` / OT 申请 ${parsed.otApplications.length} 条` : '')
     );
-    return { upload, skipped: parsed.skipped, sheetName: parsed.sheetName };
+    return {
+      upload,
+      skipped: parsed.skipped,
+      sheetName: parsed.sheetName,
+      otSheetName: parsed.otSheetName,
+      otCount: parsed.otApplications.length,
+      otSkipped: parsed.otSkipped
+    };
   }
 
   async listUploads(limit = 30) {
@@ -291,6 +317,7 @@ export class AttendanceService {
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(AttendancePunch, { uploadId: id });
       await manager.delete(AttendanceDaily, { uploadId: id });
+      await manager.delete(AttendanceOtApplication, { uploadId: id });
       await manager.delete(AttendanceUpload, { id });
     });
     await this.audit.log(user.id, 'attendance.upload.delete', 'attendance_upload', id, {

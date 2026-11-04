@@ -18,6 +18,20 @@ export interface ParsedPunch {
   shiftCode: string | null;
 }
 
+/** OT（加班）申请表的一行：某员工某天申请的加班起止时间 */
+export interface ParsedOtApplication {
+  employeeNo: string;
+  employeeName: string | null;
+  /** YYYY-MM-DD HH:mm:ss */
+  startAt: string;
+  /** YYYY-MM-DD HH:mm:ss */
+  endAt: string;
+  /** 加班代码，如 OTS */
+  otCode: string | null;
+  /** 整班班值（原表里的可选列） */
+  shiftCode: string | null;
+}
+
 export interface ParseResult {
   punches: ParsedPunch[];
   skipped: number;
@@ -25,6 +39,11 @@ export interface ParseResult {
   totalRows: number;
   shiftCodes: string[];
   blankShiftCount: number;
+  /** 同一个工作簿里的「OT申请」表，没有则为空数组 */
+  otApplications: ParsedOtApplication[];
+  otSheetName: string | null;
+  /** OT 行里无法解析的条数 */
+  otSkipped: number;
 }
 
 const HEADER_ALIASES = {
@@ -91,6 +110,136 @@ function clean(value: unknown): string {
 
 function cleanEmployeeNo(value: unknown): string {
   return clean(value).replace(/\.0+$/, '');
+}
+
+/** 解析「日期」单元格，输出 YYYY-MM-DD；无法识别返回 null */
+export function parseLooseDate(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  const text = clean(value);
+  if (!text) return null;
+  const ymd = /^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/.exec(text);
+  if (ymd) return `${ymd[1]}-${pad(Number(ymd[2]))}-${pad(Number(ymd[3]))}`;
+  // 01/11/2026 这类：日/月/年（第二段大于 12 时按 月/日/年 处理）
+  const dmy = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/.exec(text);
+  if (dmy) {
+    const a = Number(dmy[1]);
+    const b = Number(dmy[2]);
+    // 日/月/年 与 月/日/年 都合法时按「日/月/年」处理（SAP 等系统常见导出格式）
+    const day = a > 12 ? a : (b > 12 ? b : a);
+    const month = a > 12 ? b : (b > 12 ? a : b);
+    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+    return `${dmy[3]}-${pad(month)}-${pad(day)}`;
+  }
+  const serial = Number(text);
+  if (Number.isFinite(serial) && serial > 20000 && serial < 80000) {
+    const parsed = XLSX.SSF.parse_date_code(serial);
+    if (parsed) return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)}`;
+  }
+  return null;
+}
+
+/** 解析「时间」单元格，输出 HH:mm:ss；无法识别返回 null */
+export function parseLooseTime(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+  }
+  const text = clean(value);
+  if (!text) return null;
+  const hm = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/.exec(text);
+  if (hm) {
+    const h = Number(hm[1]);
+    const mi = Number(hm[2]);
+    const s = Number(hm[3] ?? 0);
+    if (h > 23 || mi > 59 || s > 59) return null;
+    return `${pad(h)}:${pad(mi)}:${pad(s)}`;
+  }
+  // Excel 时间序列号（0~1 的小数）或带日期的序列号
+  const serial = Number(text);
+  if (Number.isFinite(serial)) {
+    const frac = serial - Math.floor(serial);
+    if (serial >= 0 && serial < 80000 && frac > 0) {
+      const total = Math.round(frac * 24 * 60);
+      return `${pad(Math.floor(total / 60) % 24)}:${pad(total % 60)}:00`;
+    }
+  }
+  return null;
+}
+
+const OT_HEADER_ALIASES = {
+  employeeNo: ['员工编号', '工号', '考勤号码', '员工工号', '人员编号'],
+  name: ['员工姓名', '姓名'],
+  startDate: ['开始日期', '加班开始日期'],
+  startTime: ['开始时间', '加班开始时间'],
+  endDate: ['结束日期', '加班结束日期'],
+  endTime: ['结束时间', '加班结束时间'],
+  shiftCode: ['整班班值', '班次班值', '班次'],
+  otCode: ['加班代码', '加班类型', 'OT代码']
+} as const;
+
+type OtHeaderKey = keyof typeof OT_HEADER_ALIASES;
+
+function matchOtHeader(value: unknown): OtHeaderKey | null {
+  const text = normalizeHeader(value).toLowerCase();
+  if (!text) return null;
+  for (const key of Object.keys(OT_HEADER_ALIASES) as OtHeaderKey[]) {
+    if (OT_HEADER_ALIASES[key].some((alias) => text === alias.toLowerCase())) return key;
+  }
+  return null;
+}
+
+/** 在工作簿里找「OT申请」表：表头需要包含员工编号 + 开始/结束日期时间 */
+export function parseOtApplications(workbook: XLSX.WorkBook): {
+  rows: ParsedOtApplication[];
+  sheetName: string | null;
+  skipped: number;
+} {
+  for (const name of workbook.SheetNames) {
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], {
+      header: 1, raw: false, defval: ''
+    });
+    for (let i = 0; i < Math.min(matrix.length, 10); i += 1) {
+      const map: Partial<Record<OtHeaderKey, number>> = {};
+      matrix[i].forEach((cell, index) => {
+        const key = matchOtHeader(cell);
+        if (key && map[key] === undefined) map[key] = index;
+      });
+      const looksLikeOt = map.employeeNo !== undefined
+        && map.startDate !== undefined && map.startTime !== undefined
+        && map.endDate !== undefined && map.endTime !== undefined;
+      if (!looksLikeOt) continue;
+
+      const rows: ParsedOtApplication[] = [];
+      let skipped = 0;
+      for (let r = i + 1; r < matrix.length; r += 1) {
+        const row = matrix[r];
+        const employeeNo = cleanEmployeeNo(row[map.employeeNo as number]);
+        if (!employeeNo) {
+          if (row.some((cell) => clean(cell))) skipped += 1;
+          continue;
+        }
+        const startDate = parseLooseDate(row[map.startDate as number]);
+        const startTime = parseLooseTime(row[map.startTime as number]);
+        const endDate = parseLooseDate(row[map.endDate as number]);
+        const endTime = parseLooseTime(row[map.endTime as number]);
+        if (!startDate || !startTime || !endDate || !endTime) {
+          skipped += 1;
+          continue;
+        }
+        rows.push({
+          employeeNo,
+          employeeName: map.name === undefined ? null : clean(row[map.name]) || null,
+          startAt: `${startDate} ${startTime}`,
+          endAt: `${endDate} ${endTime}`,
+          otCode: map.otCode === undefined ? null : clean(row[map.otCode]) || null,
+          shiftCode: map.shiftCode === undefined ? null : clean(row[map.shiftCode]) || null
+        });
+      }
+      return { rows, sheetName: name, skipped };
+    }
+  }
+  return { rows: [], sheetName: null, skipped: 0 };
 }
 
 export function parseAttendanceFile(buffer: Buffer): ParseResult {
@@ -164,13 +313,18 @@ export function parseAttendanceFile(buffer: Buffer): ParseResult {
     });
   }
 
+  const ot = parseOtApplications(workbook);
+
   return {
     punches,
     skipped,
     sheetName,
     totalRows: Math.max(0, rows.length - headerRowIndex - 1),
     shiftCodes: Array.from(shiftCodeSet).sort(),
-    blankShiftCount
+    blankShiftCount,
+    otApplications: ot.rows,
+    otSheetName: ot.sheetName,
+    otSkipped: ot.skipped
   };
 }
 

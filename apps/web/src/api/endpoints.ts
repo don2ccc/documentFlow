@@ -581,6 +581,8 @@ export interface AttendanceUploadItem {
   punchCount: number;
   employeeCount: number;
   resultCount: number;
+  /** 随文件一起导入的 OT（加班）申请条数 */
+  otCount: number;
   createdBy: string | null;
   createdByName: string | null;
   createdAt: string;
@@ -664,7 +666,14 @@ export const attendanceApi = {
     fd.append('file', file);
     if (shiftId) fd.append('shiftId', shiftId);
     return api
-      .post<{ upload: AttendanceUploadItem; skipped: number; sheetName: string }>('/attendance/uploads', fd, {
+      .post<{
+        upload: AttendanceUploadItem;
+        skipped: number;
+        sheetName: string;
+        otSheetName: string | null;
+        otCount: number;
+        otSkipped: number;
+      }>('/attendance/uploads', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 180_000
       })

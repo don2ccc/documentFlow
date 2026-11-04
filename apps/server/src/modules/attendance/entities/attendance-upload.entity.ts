@@ -38,6 +38,8 @@ export class AttendanceUpload {
   @Column({ type: 'int', default: 0 }) punchCount!: number;
   @Column({ type: 'int', default: 0 }) employeeCount!: number;
   @Column({ type: 'int', default: 0 }) resultCount!: number;
+  /** 本批次随文件一起导入的 OT（加班）申请条数 */
+  @Column({ type: 'int', default: 0 }) otCount!: number;
 
   @Column({ type: 'uuid', nullable: true }) createdBy!: string | null;
   @Column({ type: 'varchar', length: 50, nullable: true }) createdByName!: string | null;
