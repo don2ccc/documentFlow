@@ -268,6 +268,20 @@ describe('OT 申请（加班单）', () => {
     expect(row.overtimeMinutes).toBe(750);
   });
 
+  it('OT 申请工号补零（00119260）与打卡工号（119260）能匹配', () => {
+    const defs = [{ code: 'M10', name: '白班1#', ...M10 }];
+    const at = (t: string) => ({ ...punch(`2026-11-01 ${t}`), employeeNo: '119260' });
+    const rows = computeDailyResultsForShifts(
+      defs,
+      [at('07:19:57'), at('11:34:00'), at('11:45:11'), at('16:34:00'), at('16:45:00'), at('20:08:04')],
+      defs[0],
+      [{ employeeNo: '00119260', startAt: '2026-11-01 07:30:00', endAt: '2026-11-01 20:00:00', otCode: 'OTS' }]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('OT加班');
+    expect(rows[0].overtimeMinutes).toBe(750);
+  });
+
   it('没有 OT 申请的员工仍按常规口径计算', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:40:00'),

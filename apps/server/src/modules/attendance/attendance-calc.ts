@@ -39,6 +39,15 @@ export interface PunchInput {
   shiftCode?: string | null;
 }
 
+/**
+ * 工号归一化：OT 申请表常用 8 位补零工号（00119260），
+ * 打卡文件用 6 位（119260），比较时去掉前导零。
+ */
+export function normalizeEmployeeNo(value: string): string {
+  const text = value.trim();
+  return text.replace(/^0+/, '') || text;
+}
+
 /** OT（加班）申请：某员工某段区间内的打卡全部算加班 */
 export interface OtApplicationInput {
   employeeNo: string;
@@ -472,7 +481,8 @@ export function computeDailyResultsForShifts(
   const byCode = new Map(shifts.map((s) => [normalizeCode(s.code), s]));
   const otByEmployee = new Map<string, OtApplicationInput[]>();
   for (const app of otApplications) {
-    const key = app.employeeNo.trim();
+    // OT 表工号常见 8 位补零（00119260），打卡文件用 6 位（119260），按去零后的键匹配
+    const key = normalizeEmployeeNo(app.employeeNo);
     const list = otByEmployee.get(key);
     if (list) list.push(app);
     else otByEmployee.set(key, [app]);
@@ -519,7 +529,7 @@ export function computeDailyResultsForShifts(
   return Array.from(groups.values())
     .map(({ window, shift, punches: list }) => {
       const employeeNo = list[0].employeeNo;
-      const ranges = (otByEmployee.get(employeeNo) ?? []).map((r) => ({
+      const ranges = (otByEmployee.get(normalizeEmployeeNo(employeeNo)) ?? []).map((r) => ({
         start: parseDateTime(r.startAt),
         end: parseDateTime(r.endAt),
         otCode: r.otCode ?? null
