@@ -269,6 +269,27 @@ describe('OT 申请（加班单）', () => {
     expect(row.overtimeMinutes).toBe(660);
   });
 
+  it('打卡比 OT 开始晚几十秒不会白丢半小时', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:30:26'),
+      punch('2026-11-01 11:34:46'),
+      punch('2026-11-01 11:53:45'),
+      punch('2026-11-01 16:34:33'),
+      punch('2026-11-01 16:48:29'),
+      punch('2026-11-01 20:04:27')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    expect(row.overtimeMinutes).toBe(660);
+  });
+
+  it('OT 申请早于班次开始时，提前打卡的时间计入加班', () => {
+    const [row] = computeDailyResults(M12, [
+      punch('2026-11-01 07:30:00'),
+      punch('2026-11-01 20:30:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:30:00')]);
+    // 07:30-20:30 = 780，扣午休 60 + 晚餐 30 = 690（比班次 08:00 开始多算 30 分钟）
+    expect(row.overtimeMinutes).toBe(690);
+  });
+
   it('OT 当天有缺卡仍然记录并显示', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:30:00'),

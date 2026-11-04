@@ -399,7 +399,9 @@ function calcGroup(
       }
       otMs += Math.max(0, spanMs);
     }
-    const overtimeMinutes = Math.floor(otMs / MINUTES_MS / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
+    // 先按分钟取整再折算 30 分钟，避免打卡差几十秒（如 07:30:26）白丢半小时
+    const otMinutes = Math.round(otMs / MINUTES_MS);
+    const overtimeMinutes = Math.floor(otMinutes / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
     const breakMinutes = Math.floor(breakMs / MINUTES_MS);
     const rangeText = applied
       .map((range) => `${formatTime(range.start).slice(0, 5)}-${formatTime(range.end).slice(0, 5)}`)
