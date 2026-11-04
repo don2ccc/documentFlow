@@ -335,7 +335,15 @@ export class AttendanceService {
     if (query.dateTo) qb.andWhere('d.workDate <= :dateTo', { dateTo: query.dateTo });
     if (query.department) qb.andWhere('d.department = :department', { department: query.department });
     if (query.shiftCode) qb.andWhere('d.shiftCode = :shiftCode', { shiftCode: query.shiftCode });
-    if (query.status) qb.andWhere('d.status = :status', { status: query.status });
+    if (query.status === '缺卡') {
+      // OT 当天的缺卡状态仍显示为 OT加班，缺卡信息写在 abnormal 里，一并筛出来
+      qb.andWhere(
+        "(d.status = :status OR (d.status = 'OT加班' AND d.abnormal LIKE '%缺卡%'))",
+        { status: query.status }
+      );
+    } else if (query.status) {
+      qb.andWhere('d.status = :status', { status: query.status });
+    }
     if (query.keyword) {
       qb.andWhere('(d.employeeNo ILIKE :kw OR d.employeeName ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
     }
@@ -377,7 +385,10 @@ export class AttendanceService {
       .addSelect('COALESCE(SUM(d.overtimeMinutes), 0)', 'overtimeMinutes')
       .addSelect("COALESCE(SUM(CASE WHEN d.lateMinutes > 0 THEN 1 ELSE 0 END), 0)", 'lateCount')
       .addSelect("COALESCE(SUM(CASE WHEN d.earlyMinutes > 0 THEN 1 ELSE 0 END), 0)", 'earlyCount')
-      .addSelect("COALESCE(SUM(CASE WHEN d.status = '缺卡' THEN 1 ELSE 0 END), 0)", 'missingCount')
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN d.status = '缺卡' OR (d.status = 'OT加班' AND d.abnormal LIKE '%缺卡%') THEN 1 ELSE 0 END), 0)",
+        'missingCount'
+      )
       .addSelect("COALESCE(SUM(CASE WHEN d.status = '正常' THEN 1 ELSE 0 END), 0)", 'normalCount')
       .getRawOne<Record<string, string>>();
 

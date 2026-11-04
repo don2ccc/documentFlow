@@ -144,6 +144,8 @@ export interface ShiftWindow {
   start: Date;
   end: Date;
   spans: ShiftSpan[];
+  /** 相邻时间段之间的休息间隔（如午休 / 晚餐），计加班时要扣除 */
+  gaps: ShiftSpan[];
   crossDay: boolean;
 }
 
@@ -193,11 +195,18 @@ export function buildShiftWindow(date: string, segments: ShiftSegmentValue[]): S
     }));
   if (spans.length === 0) throw new Error('班次时间段无效');
   const end = spans[spans.length - 1].end;
+  const gaps: ShiftSpan[] = [];
+  for (let i = 1; i < spans.length; i += 1) {
+    if (spans[i].start.getTime() > spans[i - 1].end.getTime()) {
+      gaps.push({ start: spans[i - 1].end, end: spans[i].start });
+    }
+  }
   return {
     date,
     start,
     end,
     spans,
+    gaps,
     crossDay: end.getTime() - start.getTime() > DAY_MINUTES * MINUTES_MS
   };
 }
@@ -370,22 +379,34 @@ function calcGroup(
   const punchCount = punches.length;
   const sample = punches[0];
 
-  // 有 OT 申请：按申请区间裁剪后的实际打卡全部算加班，不判迟到 / 早退 / 缺卡
+  // 有 OT 申请：按申请区间裁剪后的实际打卡全部算加班，不判迟到 / 早退；缺卡仍记录
   const applied = otRanges.filter((range) => (
     range.start.getTime() < window.end.getTime() && range.end.getTime() > window.start.getTime()
   ));
   if (applied.length) {
     let otMs = 0;
+    let breakMs = 0;
     for (const range of applied) {
-      const start = Math.max(first.getTime(), range.start.getTime());
-      const end = Math.min(last.getTime(), range.end.getTime());
-      otMs += Math.max(0, end - start);
+      const startMs = Math.max(first.getTime(), range.start.getTime());
+      const endMs = Math.min(last.getTime(), range.end.getTime());
+      if (endMs <= startMs) continue;
+      let spanMs = endMs - startMs;
+      // 扣除班次时间段之间的休息（午休 / 晚餐），休息不计入加班
+      for (const gap of window.gaps) {
+        const cut = Math.max(0, Math.min(endMs, gap.end.getTime()) - Math.max(startMs, gap.start.getTime()));
+        spanMs -= cut;
+        breakMs += cut;
+      }
+      otMs += Math.max(0, spanMs);
     }
     const overtimeMinutes = Math.floor(otMs / MINUTES_MS / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
+    const breakMinutes = Math.floor(breakMs / MINUTES_MS);
     const rangeText = applied
       .map((range) => `${formatTime(range.start).slice(0, 5)}-${formatTime(range.end).slice(0, 5)}`)
       .join('、');
     const codeText = applied.map((range) => range.otCode).filter(Boolean)[0];
+    const breakText = breakMinutes > 0 ? `（已扣休息 ${breakMinutes} 分钟）` : '';
+    const missingText = missingPoints.length ? `；缺卡：${missingPoints.join('、')}` : '';
     return {
       workDate: window.date,
       employeeNo: sample.employeeNo,
@@ -403,7 +424,7 @@ function calcGroup(
       lateMinutes: 0,
       earlyMinutes: 0,
       status: 'OT加班',
-      abnormal: `OT 申请 ${rangeText}${codeText ? `（${codeText}）` : ''}，全天计加班`,
+      abnormal: `OT 申请 ${rangeText}${codeText ? `（${codeText}）` : ''}，全天计加班${breakText}${missingText}`,
       segments
     };
   }

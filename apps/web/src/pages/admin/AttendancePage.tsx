@@ -414,9 +414,14 @@ export function AttendancePage() {
       render: (v: number) => v > 0 ? <span style={{ color: '#fa541c' }}>{v}</span> : '-'
     },
     {
-      title: '状态', dataIndex: 'status', width: 110,
-      render: (v: string) => (
-        <Tag color={STATUS_TAG_COLOR[v] ?? 'default'} style={{ marginInlineEnd: 0 }}>{v}</Tag>
+      title: '状态', dataIndex: 'status', width: 150,
+      render: (v: string, row: AttendanceDailyItem) => (
+        <>
+          <Tag color={STATUS_TAG_COLOR[v] ?? 'default'} style={{ marginInlineEnd: 4 }}>{v}</Tag>
+          {v !== '缺卡' && row.abnormal?.includes('缺卡') ? (
+            <Tag color={STATUS_TAG_COLOR['缺卡']} style={{ marginInlineEnd: 0 }}>缺卡</Tag>
+          ) : null}
+        </>
       )
     },
     {
@@ -591,7 +596,7 @@ export function AttendancePage() {
             loading={loading}
             columns={resultColumns}
             dataSource={data?.items ?? []}
-            scroll={{ x: 1960 }}
+            scroll={{ x: 2000 }}
             pagination={{
               current: page,
               pageSize,
@@ -617,7 +622,7 @@ export function AttendancePage() {
                 工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；加班 = 工作时长超过正常工时的部分，
                 以 30 分钟为单位向下取整（不足 30 分钟舍去）；正常班次时段内有应打卡点没打才标记「缺卡」，工时仍按实际打卡计算。
                 文件里带「OT申请」表时，当天有 OT 申请的员工按申请区间计算：区间内的打卡全部算加班（仍按 30 分钟向下取整），
-                不判迟到 / 早退 / 缺卡，状态显示「OT加班」；没有 OT 申请的按上面常规口径计算。
+                并扣除班次时间段之间的休息（午休 / 晚餐）；不判迟到 / 早退，缺卡仍照常显示，状态为「OT加班」；没有 OT 申请的按上面常规口径计算。
                 跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。
               </Typography.Text>
             )}

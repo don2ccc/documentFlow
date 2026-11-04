@@ -231,7 +231,7 @@ describe('OT 申请（加班单）', () => {
     otCode: 'OTS'
   });
 
-  it('有 OT 申请：按申请区间全天计加班，不判迟到早退缺卡', () => {
+  it('有 OT 申请：按申请区间全天计加班，扣除班次间的休息，不判迟到早退', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:19:00'),
       punch('2026-11-01 11:34:00'),
@@ -240,14 +240,15 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 17:00:00'),
       punch('2026-11-01 20:05:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 07:30-20:00 = 750 分钟，全部算加班
-    expect(row.overtimeMinutes).toBe(750);
+    // 07:30-20:00 = 750 分钟，扣除午休 60 + 晚餐 30 = 660 分钟
+    expect(row.overtimeMinutes).toBe(660);
     expect(row.standardMinutes).toBe(0);
     expect(row.lateMinutes).toBe(0);
     expect(row.earlyMinutes).toBe(0);
     expect(row.status).toBe('OT加班');
     expect(row.abnormal).toContain('OT 申请');
     expect(row.abnormal).toContain('07:30-20:00');
+    expect(row.abnormal).toContain('已扣休息 90 分钟');
   });
 
   it('OT 申请区间内打卡不满时按实际时长，仍按 30 分钟向下取整', () => {
@@ -255,8 +256,8 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 07:30:00'),
       punch('2026-11-01 16:44:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 07:30-16:44 = 554 分钟 → 540
-    expect(row.overtimeMinutes).toBe(540);
+    // 07:30-16:44 = 554 分钟，扣午休 60 + 16:30-16:44 的 14 分钟休息 = 480
+    expect(row.overtimeMinutes).toBe(480);
     expect(row.status).toBe('OT加班');
   });
 
@@ -265,7 +266,19 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 07:00:00'),
       punch('2026-11-01 21:30:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    expect(row.overtimeMinutes).toBe(750);
+    expect(row.overtimeMinutes).toBe(660);
+  });
+
+  it('OT 当天有缺卡仍然记录并显示', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:30:00'),
+      punch('2026-11-01 11:30:00'),
+      punch('2026-11-01 16:30:00'),
+      punch('2026-11-01 20:00:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    expect(row.status).toBe('OT加班');
+    expect(row.overtimeMinutes).toBe(660);
+    expect(row.abnormal).toContain('缺卡：第 2 段上班');
   });
 
   it('OT 申请工号补零（00119260）与打卡工号（119260）能匹配', () => {
@@ -279,7 +292,7 @@ describe('OT 申请（加班单）', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe('OT加班');
-    expect(rows[0].overtimeMinutes).toBe(750);
+    expect(rows[0].overtimeMinutes).toBe(660);
   });
 
   it('没有 OT 申请的员工仍按常规口径计算', () => {
