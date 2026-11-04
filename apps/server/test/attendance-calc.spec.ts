@@ -274,21 +274,39 @@ describe('OT 申请（加班单）', () => {
     expect(row.status).toBe('OT加班');
   });
 
-  it('OT 申请区间内打卡不满时按实际时长，仍按 30 分钟向下取整', () => {
+  it('缺卡的时段整段扣完（王梅：第 2 段缺上班卡 → 7h）', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:20:00'),
+      punch('2026-11-01 11:31:00'),
+      punch('2026-11-01 16:30:00'),
+      punch('2026-11-01 16:42:00'),
+      punch('2026-11-01 20:02:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    // 第 1 段 4h + 第 2 段缺卡整段扣完 + 第 3 段 3h = 420（7h）
+    expect(row.overtimeMinutes).toBe(420);
+    expect(row.abnormal).toContain('缺卡：第 2 段上班');
+  });
+
+  it('缺卡的时段整段扣完：只有首末两次打卡时加班为 0', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:30:00'),
       punch('2026-11-01 16:44:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 第 1 段 4h（缺下班卡按段尾补）+ 第 2 段 12:30-16:30 4h = 480
-    expect(row.overtimeMinutes).toBe(480);
+    // 第 1 段缺下班卡、第 2 段缺上班卡，均整段扣完
+    expect(row.overtimeMinutes).toBe(0);
     expect(row.status).toBe('OT加班');
   });
 
   it('OT 申请超出部分的打卡不计入加班', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:00:00'),
+      punch('2026-11-01 11:30:00'),
+      punch('2026-11-01 12:30:00'),
+      punch('2026-11-01 16:30:00'),
+      punch('2026-11-01 17:00:00'),
       punch('2026-11-01 21:30:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    // 07:30-20:00 共 660 分钟，20:00 之后的 90 分钟不计
     expect(row.overtimeMinutes).toBe(660);
   });
 
@@ -307,9 +325,13 @@ describe('OT 申请（加班单）', () => {
   it('OT 申请早于班次开始时，提前打卡的时间计入加班', () => {
     const [row] = computeDailyResults(M12, [
       punch('2026-11-01 07:30:00'),
+      punch('2026-11-01 12:00:00'),
+      punch('2026-11-01 13:00:00'),
+      punch('2026-11-01 17:00:00'),
+      punch('2026-11-01 17:30:00'),
       punch('2026-11-01 20:30:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:30:00')]);
-    // 07:30-20:30 = 780，扣午休 60 + 晚餐 30 = 690（比班次 08:00 开始多算 30 分钟）
+    // 07:30-08:00 提前到岗 30 + 4h + 4h + 3h = 690（比班次 08:00 开始多算 30 分钟）
     expect(row.overtimeMinutes).toBe(690);
   });
 
@@ -351,7 +373,7 @@ describe('OT 申请（加班单）', () => {
     expect(row.overtimeMinutes).toBe(630);
   });
 
-  it('OT 当天有缺卡仍然记录并显示', () => {
+  it('OT 当天有缺卡仍然记录并显示，且缺卡时段整段扣完', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:30:00'),
       punch('2026-11-01 11:30:00'),
@@ -359,7 +381,7 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 20:00:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
     expect(row.status).toBe('OT加班');
-    expect(row.overtimeMinutes).toBe(660);
+    expect(row.overtimeMinutes).toBe(420);
     expect(row.abnormal).toContain('缺卡：第 2 段上班');
   });
 
