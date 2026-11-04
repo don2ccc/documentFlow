@@ -215,6 +215,11 @@ function overlapMs(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number {
   return Math.max(0, end - start);
 }
 
+/** 打卡时间按分钟向下取整：秒数直接舍去，差 1 分钟就按 1 分钟算 */
+function floorToMinute(time: Date): Date {
+  return new Date(Math.floor(time.getTime() / MINUTES_MS) * MINUTES_MS);
+}
+
 interface Alignment {
   count: number;
   distance: number;
@@ -343,24 +348,20 @@ function buildSegmentDetail(
   // 实际工作时长按「每个时间段自己的上下班打卡」算，而不是首末卡整段相减：
   // 中午 13:16 才回来上班，12:30-13:16 就不算工作；午休 / 晚餐间隔也不计。
   // 缺卡时按班次边界补足，但补足范围不能超出当天首卡 ~ 末卡（人不在场的时间不能凭空补）。
-  // 打卡时间与班次边界相差 5 分钟以内时按边界时间计：提前 1 分钟下班不再白丢 30 分钟加班。
-  const BOUNDARY_GRACE_MS = 5 * MINUTES_MS;
-  const firstTime = times[0];
-  const lastTime = times[times.length - 1];
+  // 打卡时间按分钟向下取整（秒数舍去）：16:44:56 算 16:44，与 16:45 差 1 分钟照实扣。
+  const firstTime = floorToMinute(times[0]);
+  const lastTime = floorToMinute(times[times.length - 1]);
   const workedIntervals = window.spans.map((span, index) => {
-    const punchIn = picked.get(`${index}-in`) ?? null;
-    const punchOut = picked.get(`${index}-out`) ?? null;
+    const punchIn = picked.get(`${index}-in`);
+    const punchOut = picked.get(`${index}-out`);
     const availableStart = new Date(Math.max(span.start.getTime(), firstTime.getTime()));
     const availableEnd = new Date(Math.min(span.end.getTime(), lastTime.getTime()));
     if (availableEnd.getTime() <= availableStart.getTime()) return null;
-    let start = availableStart;
-    if (punchIn && punchIn.getTime() > start.getTime()) {
-      start = punchIn.getTime() - start.getTime() <= BOUNDARY_GRACE_MS ? availableStart : punchIn;
-    }
-    let end = availableEnd;
-    if (punchOut && punchOut.getTime() < end.getTime()) {
-      end = end.getTime() - punchOut.getTime() <= BOUNDARY_GRACE_MS ? availableEnd : punchOut;
-    }
+    const inAt = punchIn ? floorToMinute(punchIn) : null;
+    const outAt = punchOut ? floorToMinute(punchOut) : null;
+    if (inAt && outAt && outAt.getTime() <= inAt.getTime()) return null;
+    const start = inAt && inAt.getTime() > availableStart.getTime() ? inAt : availableStart;
+    const end = outAt && outAt.getTime() < availableEnd.getTime() ? outAt : availableEnd;
     return end.getTime() > start.getTime() ? { start, end } : null;
   });
 
@@ -403,9 +404,9 @@ function calcGroup(
     range.start.getTime() < window.end.getTime() && range.end.getTime() > window.start.getTime()
   ));
   if (applied.length) {
-    // 每段先取整到分钟再加总：打卡差几十秒（如 07:30:26）不会白丢半小时
+    // 边界已按分钟向下取整，直接按分钟相加
     const overlapMinutes = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
-      Math.round(overlapMs(aStart, aEnd, bStart, bEnd) / MINUTES_MS);
+      overlapMs(aStart, aEnd, bStart, bEnd) / MINUTES_MS;
     let otMinutes = 0;
     // 班次内：按每个时间段自己的上下班打卡，休息与未在岗的空档都不计
     for (const interval of workedIntervals) {
@@ -417,16 +418,19 @@ function calcGroup(
     // 班次开始前 / 结束后，只要落在 OT 申请范围内也算加班
     const firstSpan = window.spans[0];
     const lastSpan = window.spans[window.spans.length - 1];
-    if (first.getTime() < firstSpan.start.getTime()) {
+    const firstMinute = floorToMinute(first);
+    const lastMinute = floorToMinute(last);
+    if (firstMinute.getTime() < firstSpan.start.getTime()) {
       for (const range of applied) {
-        otMinutes += overlapMinutes(first, firstSpan.start, range.start, range.end);
+        otMinutes += overlapMinutes(firstMinute, firstSpan.start, range.start, range.end);
       }
     }
-    if (last.getTime() > lastSpan.end.getTime()) {
+    if (lastMinute.getTime() > lastSpan.end.getTime()) {
       for (const range of applied) {
-        otMinutes += overlapMinutes(lastSpan.end, last, range.start, range.end);
+        otMinutes += overlapMinutes(lastSpan.end, lastMinute, range.start, range.end);
       }
     }
+    otMinutes = Math.floor(otMinutes);
     const overtimeMinutes = Math.floor(otMinutes / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
     const rangeText = applied
       .map((range) => `${formatTime(range.start).slice(0, 5)}-${formatTime(range.end).slice(0, 5)}`)
