@@ -5,7 +5,7 @@ import { ShiftSegmentValue } from './entities/attendance-shift.entity';
  * 考勤计算核心（纯函数，不碰数据库，便于单测）。
  *
  * 计算口径（与业务确认过）：
- *   1. 每次上传只用一个班次，整批数据统一按该班次计算；
+ *   1. 原始数据里带「班次」列时按每行班次分别计算；没有该列时整批使用默认班次；
  *   2. 迟到 / 早退 0 分钟宽限，按秒向上取整到分钟；
  *   3. 工作时长 = 打卡区间与前班次各时间段的交集之和，加上班次结束后的时间；
  *   4. 加班时长 = 工作时长 - 标准工时（不足 0 记 0）；
@@ -20,6 +20,12 @@ export interface ShiftConfig {
   standardMinutes: number;
 }
 
+/** 带编码的班次，用于按打卡行分别匹配 */
+export interface NamedShiftConfig extends ShiftConfig {
+  code: string;
+  name?: string;
+}
+
 export interface PunchInput {
   employeeNo: string;
   employeeName: string;
@@ -27,6 +33,8 @@ export interface PunchInput {
   machine: string | null;
   /** YYYY-MM-DD HH:mm:ss */
   punchAt: string;
+  /** 原始数据「班次」列的值，为空时使用上传时选择的默认班次 */
+  shiftCode?: string | null;
 }
 
 export interface DailyResult {
@@ -34,6 +42,8 @@ export interface DailyResult {
   employeeNo: string;
   employeeName: string;
   department: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
   firstIn: string | null;
   lastOut: string | null;
   punchCount: number;
@@ -196,7 +206,7 @@ function buildSegmentDetail(window: ShiftWindow, times: Date[]): DailySegmentDet
   });
 }
 
-function calcGroup(window: ShiftWindow, config: ShiftConfig, punches: PunchInput[]): DailyResult {
+function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: PunchInput[]): DailyResult {
   const times = punches.map((p) => parseDateTime(p.punchAt)).sort((a, b) => a.getTime() - b.getTime());
   const first = times[0];
   const last = times[times.length - 1];
@@ -239,6 +249,8 @@ function calcGroup(window: ShiftWindow, config: ShiftConfig, punches: PunchInput
     employeeNo: sample.employeeNo,
     employeeName: sample.employeeName,
     department: sample.department,
+    shiftCode: config.code || null,
+    shiftName: config.name ?? null,
     firstIn: formatTime(first),
     lastOut: formatTime(last),
     punchCount,
@@ -254,30 +266,50 @@ function calcGroup(window: ShiftWindow, config: ShiftConfig, punches: PunchInput
 }
 
 /**
- * 把一批打卡记录换算成「员工 × 排班日期」的结果。
+ * 多班次计算：每条打卡按自带的 shiftCode 匹配班次；为空则使用 defaultShift。
  *
- * 先为每个打卡日期（以及前后各一天）准备班次窗口，再把每条打卡分配给
- * 距离最近的窗口 —— 跨天夜班的次日凌晨打卡就会落到前一天。
+ * 先为每条打卡的班次准备「当天及前后各一天」的窗口，再把打卡分配给距离最近的
+ * 窗口 —— 跨天夜班（如 M21 20:00-08:00）的次日凌晨打卡会落到前一天。
+ * 分组键包含班次编码，因此同一天同一员工如果跨两个班次，会分别生成两行。
  */
-export function computeDailyResults(config: ShiftConfig, punches: PunchInput[]): DailyResult[] {
+export function computeDailyResultsForShifts(
+  shifts: NamedShiftConfig[],
+  punches: PunchInput[],
+  defaultShift?: NamedShiftConfig
+): DailyResult[] {
   if (!punches.length) return [];
-  if (validateSegments(config.segments)) throw new Error(validateSegments(config.segments) as string);
 
+  for (const shift of shifts) {
+    const error = validateSegments(shift.segments);
+    if (error) throw new Error(`班次 ${shift.code}：${error}`);
+  }
+
+  const normalizeCode = (code: string) => code.trim().toUpperCase();
+  const byCode = new Map(shifts.map((s) => [normalizeCode(s.code), s]));
   const windowCache = new Map<string, ShiftWindow>();
-  const getWindow = (date: string) => {
-    let w = windowCache.get(date);
+  const getWindow = (code: string, date: string) => {
+    const key = `${code}|${date}`;
+    let w = windowCache.get(key);
     if (!w) {
-      w = buildShiftWindow(date, config.segments);
-      windowCache.set(date, w);
+      const shift = byCode.get(normalizeCode(code));
+      if (!shift) throw new Error(`班次「${code}」未配置`);
+      w = buildShiftWindow(date, shift.segments);
+      windowCache.set(key, w);
     }
     return w;
   };
 
-  const groups = new Map<string, { window: ShiftWindow; punches: PunchInput[] }>();
+  const groups = new Map<string, { window: ShiftWindow; shift: NamedShiftConfig; punches: PunchInput[] }>();
   for (const punch of punches) {
+    const rawCode = punch.shiftCode?.trim();
+    const code = rawCode || (defaultShift ? defaultShift.code : '');
+    const shift = byCode.get(normalizeCode(code));
+    if (!shift) {
+      throw new Error(`班次「${rawCode || code || '空'}」未配置，请先在「班次管理」中维护`);
+    }
     const time = parseDateTime(punch.punchAt);
     const day = formatDate(time);
-    const candidates = [addDays(day, -1), day, addDays(day, 1)].map(getWindow);
+    const candidates = [addDays(day, -1), day, addDays(day, 1)].map((d) => getWindow(shift.code, d));
     let best = candidates[0];
     let bestDistance = distanceToWindow(time, best);
     for (const candidate of candidates.slice(1)) {
@@ -287,15 +319,23 @@ export function computeDailyResults(config: ShiftConfig, punches: PunchInput[]):
         bestDistance = distance;
       }
     }
-    const key = `${best.date}|${punch.employeeNo}`;
+    const key = `${shift.code}|${best.date}|${punch.employeeNo}`;
     const bucket = groups.get(key);
     if (bucket) bucket.punches.push(punch);
-    else groups.set(key, { window: best, punches: [punch] });
+    else groups.set(key, { window: best, shift, punches: [punch] });
   }
 
   return Array.from(groups.values())
-    .map(({ window, punches: list }) => calcGroup(window, config, list))
-    .sort((a, b) => (a.workDate === b.workDate
-      ? a.employeeNo.localeCompare(b.employeeNo)
-      : a.workDate.localeCompare(b.workDate)));
+    .map(({ window, shift, punches: list }) => calcGroup(window, shift, list))
+    .sort((a, b) => {
+      if (a.workDate !== b.workDate) return a.workDate.localeCompare(b.workDate);
+      if (a.employeeNo !== b.employeeNo) return a.employeeNo.localeCompare(b.employeeNo);
+      return (a.shiftCode ?? '').localeCompare(b.shiftCode ?? '');
+    });
+}
+
+/** 单班次计算的便捷入口（默认班次逻辑、历史调用与单测使用）。 */
+export function computeDailyResults(config: ShiftConfig, punches: PunchInput[]): DailyResult[] {
+  const shift: NamedShiftConfig = { ...config, code: 'DEFAULT', name: '默认班次' };
+  return computeDailyResultsForShifts([shift], punches, shift);
 }

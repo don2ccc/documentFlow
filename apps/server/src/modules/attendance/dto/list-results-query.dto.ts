@@ -8,6 +8,7 @@ export class ListResultsQueryDto {
   @IsOptional() @IsString() dateTo?: string;
   @IsOptional() @IsString() keyword?: string;
   @IsOptional() @IsString() department?: string;
+  @IsOptional() @IsString() shiftCode?: string;
   @IsOptional() @IsIn(ATTENDANCE_STATUSES as unknown as string[]) status?: string;
   @IsOptional() @IsString() page?: string;
   @IsOptional() @IsString() pageSize?: string;

@@ -81,6 +81,7 @@ export function AttendancePage() {
   const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<string | undefined>();
+  const [shiftCode, setShiftCode] = useState<string | undefined>();
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadShiftId, setUploadShiftId] = useState<string | undefined>();
@@ -101,11 +102,10 @@ export function AttendancePage() {
       setShifts(shiftList);
       setUploads(uploadList);
       setUploadId((prev) => prev ?? uploadList[0]?.id);
-      if (!uploadShiftId && shiftList.length) setUploadShiftId(shiftList.find((s) => s.active)?.id);
     } catch (e) {
       message.error(errMsg(e));
     }
-  }, [uploadShiftId]);
+  }, []);
 
   useEffect(() => { loadMeta(); }, [loadMeta]);
 
@@ -122,6 +122,7 @@ export function AttendancePage() {
         pageSize,
         keyword: keyword || undefined,
         status,
+        shiftCode,
         dateFrom: range?.[0]?.format('YYYY-MM-DD'),
         dateTo: range?.[1]?.format('YYYY-MM-DD')
       });
@@ -131,7 +132,7 @@ export function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [uploadId, page, pageSize, keyword, status, range]);
+  }, [uploadId, page, pageSize, keyword, status, shiftCode, range]);
 
   useEffect(() => { loadResults(); }, [loadResults]);
 
@@ -152,10 +153,24 @@ export function AttendancePage() {
   const uploadOptions = useMemo(
     () => uploads.map((u) => ({
       value: u.id,
-      label: `${u.fileName} · ${u.periodStart}~${u.periodEnd} · ${u.shiftCode}`
+      label: `${u.fileName} · ${u.periodStart}~${u.periodEnd} · ${u.shiftSummary ?? `${u.shiftCode} ${u.shiftName}`}`
     })),
     [uploads]
   );
+
+  const shiftFilterOptions = useMemo(() => {
+    const snapshot = currentUpload?.shiftSnapshot ?? null;
+    if (snapshot && Object.keys(snapshot).length) {
+      return Object.keys(snapshot).sort().map((code) => ({
+        value: code,
+        label: snapshot[code]?.name ? `${code} ${snapshot[code].name}` : code
+      }));
+    }
+    if (currentUpload?.shiftCode && currentUpload.shiftCode !== 'MIXED') {
+      return [{ value: currentUpload.shiftCode, label: `${currentUpload.shiftCode} ${currentUpload.shiftName}` }];
+    }
+    return shifts.filter((s) => s.active).map((s) => ({ value: s.code, label: `${s.code} ${s.name}` }));
+  }, [currentUpload, shifts]);
 
   // ---------------- 班次 ----------------
 
@@ -236,7 +251,6 @@ export function AttendancePage() {
   const submitUpload = async () => {
     const file = fileList[0]?.originFileObj as File | undefined;
     if (!file) return message.warning('请选择 Excel 文件');
-    if (!uploadShiftId) return message.warning('请选择本次计算使用的班次');
     setUploading(true);
     try {
       const res = await attendanceApi.upload(file, uploadShiftId);
@@ -245,10 +259,12 @@ export function AttendancePage() {
       );
       setUploadOpen(false);
       setFileList([]);
+      setUploadShiftId(undefined);
       setPage(1);
       setKeyword('');
       setKeywordInput('');
       setStatus(undefined);
+      setShiftCode(undefined);
       setRange(null);
       await loadMeta();
       setUploadId(res.upload.id);
@@ -280,6 +296,7 @@ export function AttendancePage() {
       const blob = await attendanceApi.exportResults(uploadId, {
         keyword: keyword || undefined,
         status,
+        shiftCode,
         dateFrom: range?.[0]?.format('YYYY-MM-DD'),
         dateTo: range?.[1]?.format('YYYY-MM-DD')
       });
@@ -299,6 +316,17 @@ export function AttendancePage() {
     {
       title: '部门', dataIndex: 'department', width: 110, ellipsis: true,
       render: (v: string | null) => v || '-'
+    },
+    {
+      title: '班次', dataIndex: 'shiftCode', width: 130,
+      render: (_: unknown, row) => (row.shiftCode
+        ? (
+          <Space size={4}>
+            <Tag color="blue" style={{ marginInlineEnd: 0 }}>{row.shiftCode}</Tag>
+            {row.shiftName && <span style={{ color: tokens.text.secondary }}>{row.shiftName}</span>}
+          </Space>
+        )
+        : '-')
     },
     {
       title: '上班', dataIndex: 'firstIn', width: 90,
@@ -394,10 +422,7 @@ export function AttendancePage() {
       extra={(
         <Space wrap>
           {canManage && (
-            <Button type="primary" icon={<UploadOutlined />} onClick={() => {
-              if (!shifts.length) return message.warning('请先在「班次管理」里新建一个班次');
-              setUploadOpen(true);
-            }}>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>
               上传原始数据
             </Button>
           )}
@@ -417,7 +442,7 @@ export function AttendancePage() {
             <Space direction="vertical" size={4}>
               <Typography.Text strong>还没有考勤数据</Typography.Text>
               <Typography.Text type="secondary">
-                先到「班次管理」建好班次，再上传考勤机导出的原卡数据（Excel）
+                先到「班次管理」建好班次，再上传考勤机导出的原卡数据（Excel）；文件里带「班次」列时会按每行班次自动计算
               </Typography.Text>
             </Space>
           )}
@@ -430,7 +455,7 @@ export function AttendancePage() {
               style={{ width: 380, maxWidth: '100%' }}
               value={uploadId}
               options={uploadOptions}
-              onChange={(v) => { setUploadId(v); setPage(1); }}
+              onChange={(v) => { setUploadId(v); setShiftCode(undefined); setPage(1); }}
               placeholder="选择上传批次"
             />
             <DatePicker.RangePicker
@@ -451,6 +476,14 @@ export function AttendancePage() {
               onSearch={(v) => { setKeyword(v.trim()); setPage(1); }}
             />
             <Select
+              style={{ width: 150 }}
+              placeholder="班次"
+              allowClear
+              value={shiftCode}
+              options={shiftFilterOptions}
+              onChange={(v) => { setShiftCode(v); setPage(1); }}
+            />
+            <Select
               style={{ width: 130 }}
               placeholder="状态"
               allowClear
@@ -463,7 +496,7 @@ export function AttendancePage() {
 
           {currentUpload && (
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: tokens.space.md, fontSize: 12 }}>
-              当前批次：{currentUpload.fileName} · 班次 {currentUpload.shiftCode} {currentUpload.shiftName} ·
+              当前批次：{currentUpload.fileName} · 班次 {currentUpload.shiftSummary ?? `${currentUpload.shiftCode} ${currentUpload.shiftName}`} ·
               {' '}{currentUpload.punchCount} 条打卡 / {currentUpload.employeeCount} 人
               {currentUpload.createdByName ? ` · 上传人 ${currentUpload.createdByName}` : ''}
             </Typography.Text>
@@ -499,7 +532,7 @@ export function AttendancePage() {
             loading={loading}
             columns={resultColumns}
             dataSource={data?.items ?? []}
-            scroll={{ x: 1340 }}
+            scroll={{ x: 1480 }}
             pagination={{
               current: page,
               pageSize,
@@ -519,9 +552,9 @@ export function AttendancePage() {
             message="计算规则"
             description={(
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                迟到 / 早退按班次时间严格计算（0 宽限，按分钟向上取整）；工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；
-                加班 = 工作时长超过标准工时的部分；打卡次数为奇数时标记「缺卡」，工时仍按实际打卡计算；
-                跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。
+                迟到 / 早退按每行打卡所属班次的时间严格计算（0 宽限，按分钟向上取整）；工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；
+                加班 = 工作时长超过该班次标准工时的部分；打卡次数为奇数时标记「缺卡」，工时仍按实际打卡计算；
+                跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。文件含「班次」列时按行匹配，不再整批统一班次。
               </Typography.Text>
             )}
           />
@@ -582,14 +615,18 @@ export function AttendancePage() {
       >
         <Space direction="vertical" size={tokens.space.md} style={{ width: '100%' }}>
           <div>
-            <Typography.Text strong>1. 选择班次</Typography.Text>
+            <Typography.Text strong>1. 默认班次（选填）</Typography.Text>
             <Select
               style={{ width: '100%', marginTop: 8 }}
               value={uploadShiftId}
               options={shiftOptions}
               onChange={setUploadShiftId}
-              placeholder="本次上传的所有员工按该班次计算"
+              allowClear
+              placeholder="文件里有「班次」列时留空即可"
             />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              文件中的「班次」列会按编码匹配「班次管理」里的班次；只有文件没有班次列、或个别行班次为空时，才使用这里的默认班次。
+            </Typography.Text>
           </div>
           <div>
             <Typography.Text strong>2. 选择 Excel 文件</Typography.Text>
@@ -604,8 +641,8 @@ export function AttendancePage() {
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
               <p className="ant-upload-text">点击或拖拽文件到此处</p>
               <p className="ant-upload-hint">
-                支持中控考勤机导出的原卡数据，需包含「姓名」「考勤号码」「日期时间」列，单次最多 10 万条。
-                文件内所有员工统一按上面选择的班次计算；不同岗位班次不同时，请分开上传。
+                支持中控考勤机导出的原卡数据，需包含「姓名」「考勤号码」「日期时间」列，可带「班次」列，单次最多 10 万条。
+                「班次」列的值（如 M10、M21）需与「班次管理」中的编码一致，大小写和首尾空格会自动忽略。
               </p>
             </Upload.Dragger>
           </div>
@@ -613,6 +650,7 @@ export function AttendancePage() {
             type="warning"
             showIcon
             message="同一份数据重复上传会产生新批次；如需重算，请先删除旧批次。"
+            description="文件中出现未配置或已停用的班次编码时，整批数据会被拒绝并提示具体班次。"
           />
         </Space>
       </Modal>

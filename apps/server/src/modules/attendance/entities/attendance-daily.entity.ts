@@ -26,6 +26,10 @@ export class AttendanceDaily {
   @Column({ length: 50 }) employeeName!: string;
   @Column({ type: 'varchar', length: 100, nullable: true }) department!: string | null;
 
+  /** 该天实际使用的班次 */
+  @Column({ type: 'varchar', length: 20, nullable: true }) shiftCode!: string | null;
+  @Column({ type: 'varchar', length: 50, nullable: true }) shiftName!: string | null;
+
   @Column({ type: 'varchar', length: 8, nullable: true }) firstIn!: string | null;
   @Column({ type: 'varchar', length: 8, nullable: true }) lastOut!: string | null;
   @Column({ type: 'int', default: 0 }) punchCount!: number;

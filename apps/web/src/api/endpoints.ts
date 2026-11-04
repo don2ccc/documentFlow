@@ -568,11 +568,14 @@ export interface AttendanceShiftItem {
 export interface AttendanceUploadItem {
   id: string;
   fileName: string;
-  shiftId: string;
+  shiftId: string | null;
   shiftCode: string;
   shiftName: string;
   shiftSegments: AttendanceSegment[];
   standardMinutes: number;
+  /** 本批次涉及的班次，例如 "M10 / M11 / M21" */
+  shiftSummary: string | null;
+  shiftSnapshot: Record<string, { name: string; segments: AttendanceSegment[]; standardMinutes: number }> | null;
   periodStart: string;
   periodEnd: string;
   punchCount: number;
@@ -599,6 +602,8 @@ export interface AttendanceDailyItem {
   employeeNo: string;
   employeeName: string;
   department: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
   firstIn: string | null;
   lastOut: string | null;
   punchCount: number;
@@ -638,6 +643,7 @@ export interface AttendanceResultsQuery {
   dateTo?: string;
   keyword?: string;
   department?: string;
+  shiftCode?: string;
   status?: string;
   page?: number;
   pageSize?: number;
@@ -652,10 +658,10 @@ export const attendanceApi = {
   removeShift: (id: string) => api.delete(`/attendance/shifts/${id}`).then((r) => r.data),
 
   listUploads: () => api.get<AttendanceUploadItem[]>('/attendance/uploads').then((r) => r.data),
-  upload: (file: File, shiftId: string) => {
+  upload: (file: File, shiftId?: string) => {
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('shiftId', shiftId);
+    if (shiftId) fd.append('shiftId', shiftId);
     return api
       .post<{ upload: AttendanceUploadItem; skipped: number; sheetName: string }>('/attendance/uploads', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },

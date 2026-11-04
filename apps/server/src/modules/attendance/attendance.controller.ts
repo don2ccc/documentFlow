@@ -54,10 +54,10 @@ export class AttendanceController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_ATTENDANCE_FILE_SIZE } }))
   upload(
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body('shiftId') shiftId: string,
+    @Body('shiftId') shiftId: string | undefined,
     @CurrentUser() user: AuthUser
   ) {
-    return this.attendance.upload(file, shiftId, user);
+    return this.attendance.upload(file, shiftId || undefined, user);
   }
 
   @Delete('uploads/:id')

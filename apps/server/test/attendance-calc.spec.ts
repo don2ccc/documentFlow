@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
-import { computeDailyResults, validateSegments } from '../src/modules/attendance/attendance-calc';
+import {
+  computeDailyResults, computeDailyResultsForShifts, validateSegments
+} from '../src/modules/attendance/attendance-calc';
 
 /**
  * 考勤计算口径回归测试。
@@ -26,6 +28,10 @@ const M21 = {
 
 function punch(punchAt: string) {
   return { employeeNo: '10000001', employeeName: '测试', department: '总公司', machine: '1', punchAt };
+}
+
+function shiftPunch(punchAt: string, shiftCode: string | null) {
+  return { ...punch(punchAt), shiftCode };
 }
 
 describe('班次时间段校验', () => {
@@ -122,5 +128,59 @@ describe('computeDailyResults', () => {
       punch('2026-10-24 20:00:00')
     ]);
     expect(rows.map((r) => r.workDate)).toEqual(['2026-10-23', '2026-10-24']);
+  });
+});
+
+describe('computeDailyResultsForShifts（原始数据自带班次列）', () => {
+  const shifts = [
+    { code: 'M10', name: '白班1#', ...M10 },
+    { code: 'M21', name: '夜班1#', ...M21 }
+  ];
+
+  it('同一天同一员工按行班次拆成两行，各按自己的标准工时算加班', () => {
+    const rows = computeDailyResultsForShifts(shifts, [
+      shiftPunch('2026-11-01 07:19:57', 'M10'),
+      shiftPunch('2026-11-01 20:08:04', 'M10'),
+      shiftPunch('2026-11-01 19:55:00', 'M21'),
+      shiftPunch('2026-11-02 00:02:00', 'M21'),
+      shiftPunch('2026-11-02 01:00:00', 'M21'),
+      shiftPunch('2026-11-02 07:58:00', 'M21')
+    ]);
+    expect(rows).toHaveLength(2);
+    const m10 = rows.find((r) => r.shiftCode === 'M10')!;
+    const m21 = rows.find((r) => r.shiftCode === 'M21')!;
+    expect(m10.workDate).toBe('2026-11-01');
+    expect(m10.shiftName).toBe('白班1#');
+    expect(m10.workMinutes).toBe(668);
+    expect(m10.overtimeMinutes).toBe(188);
+    expect(m10.status).toBe('正常');
+    expect(m21.workDate).toBe('2026-11-01');
+    expect(m21.workMinutes).toBe(658);
+    expect(m21.overtimeMinutes).toBe(178);
+    expect(m21.earlyMinutes).toBe(2);
+  });
+
+  it('班次编码忽略大小写与首尾空格', () => {
+    const rows = computeDailyResultsForShifts(shifts, [
+      shiftPunch('2026-11-01 07:19:57', ' m10 '),
+      shiftPunch('2026-11-01 20:08:04', 'M10')
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shiftCode).toBe('M10');
+  });
+
+  it('班次列为空时使用默认班次', () => {
+    const rows = computeDailyResultsForShifts(shifts, [
+      shiftPunch('2026-11-01 07:19:57', null),
+      shiftPunch('2026-11-01 20:08:04', '')
+    ], shifts[0]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shiftCode).toBe('M10');
+  });
+
+  it('未配置的班次编码直接报错，不静默按默认班次计算', () => {
+    expect(() => computeDailyResultsForShifts(shifts, [
+      shiftPunch('2026-11-01 07:19:57', 'M99')
+    ])).toThrow('M99');
   });
 });

@@ -17,4 +17,7 @@ export class AttendancePunch {
   @Column({ length: 19 }) punchAt!: string;
 
   @Column({ type: 'varchar', length: 20, nullable: true }) machine!: string | null;
+
+  /** 原始数据「班次」列的值（已 trim），没有该列时为空 */
+  @Column({ type: 'varchar', length: 20, nullable: true }) shiftCode!: string | null;
 }

@@ -4,7 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
-import { computeDailyResults, validateSegments } from './attendance-calc';
+import { computeDailyResultsForShifts, NamedShiftConfig, validateSegments } from './attendance-calc';
 import { buildAttendanceExport, parseAttendanceFile } from './attendance-excel';
 import { CreateShiftDto } from './dto/create-shift.dto';
 import { ListResultsQueryDto } from './dto/list-results-query.dto';
@@ -12,7 +12,7 @@ import { UpdateShiftDto } from './dto/update-shift.dto';
 import { AttendanceDaily } from './entities/attendance-daily.entity';
 import { AttendancePunch } from './entities/attendance-punch.entity';
 import { AttendanceShift } from './entities/attendance-shift.entity';
-import { AttendanceUpload } from './entities/attendance-upload.entity';
+import { AttendanceUpload, ShiftSnapshotEntry } from './entities/attendance-upload.entity';
 
 export const MAX_ATTENDANCE_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_ROWS = 100_000;
@@ -119,15 +119,20 @@ export class AttendanceService {
 
   // ---------------- 上传与计算 ----------------
 
-  async upload(file: Express.Multer.File | undefined, shiftId: string, user: UploaderInfo) {
+  async upload(file: Express.Multer.File | undefined, shiftId: string | undefined, user: UploaderInfo) {
     if (!file?.buffer?.length) throw new BadRequestException('请选择要上传的 Excel 文件');
     if (file.size > MAX_ATTENDANCE_FILE_SIZE) throw new BadRequestException('文件不能超过 20MB');
-    if (!shiftId) throw new BadRequestException('请选择本次计算使用的班次');
 
     const fileName = decodeFileName(file.originalname);
-    const shift = await this.shifts.findOneBy({ id: shiftId });
-    if (!shift) throw new NotFoundException('班次不存在');
-    if (!shift.active) throw new BadRequestException('该班次已停用，请先启用或换一个班次');
+    const allShifts = await this.shifts.find();
+    const normalizeCode = (code: string) => code.trim().toUpperCase();
+
+    let defaultShift: AttendanceShift | null = null;
+    if (shiftId) {
+      defaultShift = allShifts.find((s) => s.id === shiftId) ?? null;
+      if (!defaultShift) throw new NotFoundException('默认班次不存在');
+      if (!defaultShift.active) throw new BadRequestException('默认班次已停用，请先启用或换一个班次');
+    }
 
     let parsed;
     try {
@@ -142,27 +147,96 @@ export class AttendanceService {
       throw new BadRequestException(`单次最多 ${MAX_ROWS} 条打卡记录，请拆分成多个文件`);
     }
 
+    // 原始数据里的班次编码 → 已配置班次
+    const shiftByCode = new Map<string, AttendanceShift>();
+    for (const s of allShifts) shiftByCode.set(normalizeCode(s.code), s);
+
+    const countByRawCode = new Map<string, number>();
+    for (const p of parsed.punches) {
+      const code = p.shiftCode?.trim();
+      if (code) countByRawCode.set(code, (countByRawCode.get(code) ?? 0) + 1);
+    }
+
+    const missing: string[] = [];
+    const inactive: string[] = [];
+    const usedShifts = new Map<string, AttendanceShift>();
+    const canonicalCode = new Map<string, string>();
+
+    for (const [raw, count] of countByRawCode) {
+      const shift = shiftByCode.get(normalizeCode(raw));
+      if (!shift) {
+        missing.push(`${raw}（${count} 条）`);
+        continue;
+      }
+      if (!shift.active) {
+        inactive.push(`${shift.code} ${shift.name}`);
+        continue;
+      }
+      usedShifts.set(shift.code, shift);
+      canonicalCode.set(normalizeCode(raw), shift.code);
+    }
+
+    if (missing.length) {
+      throw new BadRequestException(
+        `以下班次在「班次管理」中不存在：${missing.slice(0, 10).join('、')}。请先创建对应班次后再上传`
+      );
+    }
+    if (inactive.length) {
+      throw new BadRequestException(`以下班次已停用，请先启用：${Array.from(new Set(inactive)).join('、')}`);
+    }
+    if (parsed.blankShiftCount > 0 && !defaultShift) {
+      throw new BadRequestException(
+        `有 ${parsed.blankShiftCount} 条打卡没有「班次」值，请选择默认班次或补全文件中的班次列`
+      );
+    }
+    if (usedShifts.size === 0 && !defaultShift) {
+      throw new BadRequestException('文件中没有「班次」列，请选择默认班次或补充班次列');
+    }
+    if (defaultShift) usedShifts.set(defaultShift.code, defaultShift);
+
+    const punches = parsed.punches.map((p) => {
+      const raw = p.shiftCode?.trim();
+      if (!raw) return { ...p, shiftCode: defaultShift ? defaultShift.code : null };
+      return { ...p, shiftCode: canonicalCode.get(normalizeCode(raw)) ?? raw };
+    });
+
+    const shiftDefs: NamedShiftConfig[] = Array.from(usedShifts.values()).map((s) => ({
+      code: s.code,
+      name: s.name,
+      segments: s.segments,
+      standardMinutes: s.standardMinutes
+    }));
+    const defaultDef = defaultShift
+      ? shiftDefs.find((s) => s.code === defaultShift!.code)
+      : undefined;
+
     let results;
     try {
-      results = computeDailyResults(
-        { segments: shift.segments, standardMinutes: shift.standardMinutes },
-        parsed.punches
-      );
+      results = computeDailyResultsForShifts(shiftDefs, punches, defaultDef);
     } catch (e: any) {
       throw new BadRequestException(e?.message ?? '考勤计算失败');
     }
 
     const dates = parsed.punches.map((p) => p.punchAt.slice(0, 10)).sort();
     const employeeCount = new Set(parsed.punches.map((p) => p.employeeNo)).size;
+    const shiftCodes = Array.from(usedShifts.keys()).sort();
+    const summary = shiftCodes.join(' / ');
+    const singleShift = usedShifts.size === 1 ? Array.from(usedShifts.values())[0] : null;
+    const snapshot: Record<string, ShiftSnapshotEntry> = {};
+    for (const s of usedShifts.values()) {
+      snapshot[s.code] = { name: s.name, segments: s.segments, standardMinutes: s.standardMinutes };
+    }
 
     const upload = await this.dataSource.transaction(async (manager) => {
       const header = await manager.save(manager.create(AttendanceUpload, {
         fileName,
-        shiftId: shift.id,
-        shiftCode: shift.code,
-        shiftName: shift.name,
-        shiftSegments: shift.segments,
-        standardMinutes: shift.standardMinutes,
+        shiftId: defaultShift?.id ?? null,
+        shiftCode: singleShift?.code ?? 'MIXED',
+        shiftName: singleShift?.name ?? '混合班次',
+        shiftSegments: singleShift?.segments ?? [],
+        standardMinutes: singleShift?.standardMinutes ?? defaultShift?.standardMinutes ?? 480,
+        shiftSummary: summary,
+        shiftSnapshot: snapshot,
         periodStart: dates[0],
         periodEnd: dates[dates.length - 1],
         punchCount: parsed.punches.length,
@@ -172,13 +246,14 @@ export class AttendanceService {
         createdByName: user.username
       }));
 
-      const punchRows = parsed.punches.map((p) => manager.create(AttendancePunch, {
+      const punchRows = punches.map((p) => manager.create(AttendancePunch, {
         uploadId: header.id,
         employeeNo: p.employeeNo,
         employeeName: p.employeeName,
         department: p.department,
         machine: p.machine,
-        punchAt: p.punchAt
+        punchAt: p.punchAt,
+        shiftCode: p.shiftCode
       }));
       for (let i = 0; i < punchRows.length; i += 1000) {
         await manager.insert(AttendancePunch, punchRows.slice(i, i + 1000));
@@ -193,13 +268,13 @@ export class AttendanceService {
 
     await this.audit.log(user.id, 'attendance.upload', 'attendance_upload', upload.id, {
       fileName,
-      shiftCode: shift.code,
+      shiftCodes,
       punchCount: parsed.punches.length,
       resultCount: results.length
     });
 
     this.logger.log(
-      `考勤上传完成 ${fileName}: ${parsed.punches.length} 条打卡 / ${results.length} 条日结果 (${shift.code})`
+      `考勤上传完成 ${fileName}: ${parsed.punches.length} 条打卡 / ${results.length} 条日结果 (${summary})`
     );
     return { upload, skipped: parsed.skipped, sheetName: parsed.sheetName };
   }
@@ -230,6 +305,7 @@ export class AttendanceService {
     if (query.dateFrom) qb.andWhere('d.workDate >= :dateFrom', { dateFrom: query.dateFrom });
     if (query.dateTo) qb.andWhere('d.workDate <= :dateTo', { dateTo: query.dateTo });
     if (query.department) qb.andWhere('d.department = :department', { department: query.department });
+    if (query.shiftCode) qb.andWhere('d.shiftCode = :shiftCode', { shiftCode: query.shiftCode });
     if (query.status) qb.andWhere('d.status = :status', { status: query.status });
     if (query.keyword) {
       qb.andWhere('(d.employeeNo ILIKE :kw OR d.employeeName ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
@@ -309,7 +385,7 @@ export class AttendanceService {
       .orderBy('d.workDate', 'ASC')
       .addOrderBy('d.employeeNo', 'ASC')
       .getMany();
-    const buffer = buildAttendanceExport(`${upload.shiftCode} ${upload.shiftName}`, rows);
+    const buffer = buildAttendanceExport(rows);
     return {
       buffer,
       fileName: `考勤结果_${upload.periodStart}_${upload.periodEnd}.xlsx`
