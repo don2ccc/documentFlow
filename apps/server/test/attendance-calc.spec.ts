@@ -287,6 +287,18 @@ describe('OT 申请（加班单）', () => {
     expect(row.abnormal).toContain('缺卡：第 2 段上班');
   });
 
+  it('第 3 段缺上班打卡同样整段扣完（贵小华 → 8.5h）', () => {
+    const [row] = computeDailyResults(M12, [
+      punch('2026-11-01 07:24:13'),
+      punch('2026-11-01 12:03:21'),
+      punch('2026-11-01 12:20:38'),
+      punch('2026-11-01 17:05:31'),
+      punch('2026-11-01 20:04:22')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:30:00')]);
+    // 07:30-08:00 提前到岗 30 + 第 1 段 4h + 第 2 段 4h + 第 3 段缺上班卡整段扣完 = 510（8.5h）
+    expect(row.overtimeMinutes).toBe(510);
+  });
+
   it('缺卡的时段整段扣完：只有首末两次打卡时加班为 0', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:30:00'),
@@ -381,7 +393,8 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 20:00:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
     expect(row.status).toBe('OT加班');
-    expect(row.overtimeMinutes).toBe(420);
+    // 第 2 段缺上班卡、第 3 段缺上班卡，均整段扣完，只剩第 1 段 4h
+    expect(row.overtimeMinutes).toBe(240);
     expect(row.abnormal).toContain('缺卡：第 2 段上班');
   });
 

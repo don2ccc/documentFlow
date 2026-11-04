@@ -345,35 +345,25 @@ function buildSegmentDetail(
     };
   });
 
-  // 缺卡的时段整段不计：正常班次时段内只要有一个应打卡点空缺（缺卡），该时段完全扣完。
-  // 加班时段（正常下班时间之后）可以不打卡，不算缺卡。
+  // 缺卡标识：只把「正常下班时间」之前的空缺算作缺卡（加班时段可以不打卡）。
   const regularEndMs = regularEndOf(window, standardMinutes).getTime();
   const missingPoints = expected
     .filter((point) => !picked.has(`${point.index}-${point.side}`) && point.at.getTime() <= regularEndMs)
     .map((point) => `第 ${point.index + 1} 段${point.side === 'in' ? '上班' : '下班'}`);
-  const missingSegments = new Set(
-    expected
-      .filter((point) => !picked.has(`${point.index}-${point.side}`) && point.at.getTime() <= regularEndMs)
-      .map((point) => point.index)
-  );
 
   // 实际工作时长按「每个时间段自己的上下班打卡」算，而不是首末卡整段相减：
   // 中午 13:16 才回来上班，12:30-13:16 就不算工作；午休 / 晚餐间隔也不计。
+  // 每个时段都必须有完整的上下班打卡，缺任意一次该时段整段不计（第 1 / 2 / 3 段同一口径）。
   // 打卡时间按分钟向下取整（秒数舍去）：16:44:56 算 16:44，与 16:45 差 1 分钟照实扣。
-  const firstTime = floorToMinute(times[0]);
-  const lastTime = floorToMinute(times[times.length - 1]);
   const workedIntervals = window.spans.map((span, index) => {
-    if (missingSegments.has(index)) return null;
     const punchIn = picked.get(`${index}-in`);
     const punchOut = picked.get(`${index}-out`);
-    const availableStart = new Date(Math.max(span.start.getTime(), firstTime.getTime()));
-    const availableEnd = new Date(Math.min(span.end.getTime(), lastTime.getTime()));
-    if (availableEnd.getTime() <= availableStart.getTime()) return null;
-    const inAt = punchIn ? floorToMinute(punchIn) : null;
-    const outAt = punchOut ? floorToMinute(punchOut) : null;
-    if (inAt && outAt && outAt.getTime() <= inAt.getTime()) return null;
-    const start = inAt && inAt.getTime() > availableStart.getTime() ? inAt : availableStart;
-    const end = outAt && outAt.getTime() < availableEnd.getTime() ? outAt : availableEnd;
+    if (!punchIn || !punchOut) return null;
+    const inAt = floorToMinute(punchIn);
+    const outAt = floorToMinute(punchOut);
+    if (outAt.getTime() <= inAt.getTime()) return null;
+    const start = inAt.getTime() > span.start.getTime() ? inAt : span.start;
+    const end = outAt.getTime() < span.end.getTime() ? outAt : span.end;
     return end.getTime() > start.getTime() ? { start, end } : null;
   });
 
