@@ -192,7 +192,9 @@ export class AttendanceService {
     if (usedShifts.size === 0 && !defaultShift) {
       throw new BadRequestException('文件中没有「班次」列，请选择默认班次或补充班次列');
     }
-    if (defaultShift) usedShifts.set(defaultShift.code, defaultShift);
+    if (defaultShift && (parsed.blankShiftCount > 0 || usedShifts.size === 0)) {
+      usedShifts.set(defaultShift.code, defaultShift);
+    }
 
     const punches = parsed.punches.map((p) => {
       const raw = p.shiftCode?.trim();
