@@ -343,6 +343,8 @@ function buildSegmentDetail(
   // 实际工作时长按「每个时间段自己的上下班打卡」算，而不是首末卡整段相减：
   // 中午 13:16 才回来上班，12:30-13:16 就不算工作；午休 / 晚餐间隔也不计。
   // 缺卡时按班次边界补足，但补足范围不能超出当天首卡 ~ 末卡（人不在场的时间不能凭空补）。
+  // 打卡时间与班次边界相差 5 分钟以内时按边界时间计：提前 1 分钟下班不再白丢 30 分钟加班。
+  const BOUNDARY_GRACE_MS = 5 * MINUTES_MS;
   const firstTime = times[0];
   const lastTime = times[times.length - 1];
   const workedIntervals = window.spans.map((span, index) => {
@@ -351,8 +353,14 @@ function buildSegmentDetail(
     const availableStart = new Date(Math.max(span.start.getTime(), firstTime.getTime()));
     const availableEnd = new Date(Math.min(span.end.getTime(), lastTime.getTime()));
     if (availableEnd.getTime() <= availableStart.getTime()) return null;
-    const start = punchIn && punchIn.getTime() > availableStart.getTime() ? punchIn : availableStart;
-    const end = punchOut && punchOut.getTime() < availableEnd.getTime() ? punchOut : availableEnd;
+    let start = availableStart;
+    if (punchIn && punchIn.getTime() > start.getTime()) {
+      start = punchIn.getTime() - start.getTime() <= BOUNDARY_GRACE_MS ? availableStart : punchIn;
+    }
+    let end = availableEnd;
+    if (punchOut && punchOut.getTime() < end.getTime()) {
+      end = end.getTime() - punchOut.getTime() <= BOUNDARY_GRACE_MS ? availableEnd : punchOut;
+    }
     return end.getTime() > start.getTime() ? { start, end } : null;
   });
 
