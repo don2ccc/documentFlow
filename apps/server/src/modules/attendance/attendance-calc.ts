@@ -8,8 +8,9 @@ import { ShiftSegmentValue } from './entities/attendance-shift.entity';
  *   1. 原始数据里带「班次」列时按每行班次分别计算；没有该列时整批使用默认班次；
  *   2. 迟到 / 早退 0 分钟宽限，按秒向上取整到分钟；
  *   3. 工作时长 = 打卡区间与前班次各时间段的交集之和，加上班次结束后的时间；
- *   4. 加班时长 = 工作时长 - 标准工时（不足 0 记 0）；
- *   5. 打卡次数为奇数（含只打 1 次）视为缺卡，工时仍按实际打卡计算。
+ *   4. 加班时长 = 工作时长 - 标准工时，按 30 分钟为单位向下取整（不足 30 分钟舍去，不足 0 记 0）；
+ *   5. 打卡次数为奇数（含只打 1 次）视为缺卡，工时仍按实际打卡计算；
+ *   6. 每个班次时间段都输出「上班 / 下班」两个应打卡点，缺卡的位置留空。
  *
  * 跨天班次（如 20:00-00:00 / 01:00-08:00）会把次日凌晨的打卡归到前一天，
  * 通过「就近班次窗口」实现，不再按打卡日期简单分组。
@@ -59,6 +60,8 @@ export interface DailyResult {
 
 const DAY_MINUTES = 1440;
 const MINUTES_MS = 60_000;
+/** 加班以 30 分钟为单位，不足 30 分钟舍去 */
+const OVERTIME_UNIT_MINUTES = 30;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -189,19 +192,64 @@ function overlapMs(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number {
   return Math.max(0, end - start);
 }
 
+/**
+ * 把打卡分配到每个班次时间段的「上班 / 下班」两个应打卡点。
+ *
+ * 打卡时间通常会比班次边界早/晚几分钟（例如 7:19 打 7:30 的上班卡），
+ * 因此按时间顺序把打卡匹配到最近的、尚未填写的应打卡点，而不是要求
+ * 打卡必须落在时间段内。匹配距离过远的打卡视为多余打卡（例如同一次
+ * 打卡重复刷两下），不会占用后面的应打卡点；某一点没有匹配到就留空。
+ */
 function buildSegmentDetail(window: ShiftWindow, times: Date[]): DailySegmentDetail[] {
-  return window.spans.map((span) => {
-    const inside = times.filter((t) => t >= span.start && t <= span.end);
-    const minutes = inside.length >= 2
-      ? Math.round((inside[inside.length - 1].getTime() - inside[0].getTime()) / MINUTES_MS)
+  const IN_TOLERANCE_MS = 90 * MINUTES_MS;
+  const OUT_TOLERANCE_MS = 240 * MINUTES_MS;
+  /** 同一次打卡重复刷两下的间隔，直接忽略后一次 */
+  const DUPLICATE_WINDOW_MS = 3 * MINUTES_MS;
+
+  const expected = window.spans.flatMap((span, index) => ([
+    { index, side: 'in' as const, at: span.start },
+    { index, side: 'out' as const, at: span.end }
+  ]));
+  const picked = new Map<string, Date>();
+  let cursor = 0;
+  let lastPickedAt: Date | null = null;
+
+  for (const time of times) {
+    if (lastPickedAt && time.getTime() - lastPickedAt.getTime() <= DUPLICATE_WINDOW_MS) continue;
+
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let i = cursor; i < expected.length; i += 1) {
+      const distance = Math.abs(expected[i].at.getTime() - time.getTime());
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+    if (bestIndex < 0) break;
+
+    const point = expected[bestIndex];
+    const tolerance = point.side === 'in' ? IN_TOLERANCE_MS : OUT_TOLERANCE_MS;
+    if (bestDistance <= tolerance || bestIndex === expected.length - 1) {
+      picked.set(`${point.index}-${point.side}`, time);
+      cursor = bestIndex + 1;
+      lastPickedAt = time;
+    }
+  }
+
+  return window.spans.map((span, index) => {
+    const punchIn = picked.get(`${index}-in`) ?? null;
+    const punchOut = picked.get(`${index}-out`) ?? null;
+    const minutes = punchIn && punchOut
+      ? Math.round((punchOut.getTime() - punchIn.getTime()) / MINUTES_MS)
       : 0;
     return {
       start: formatTime(span.start).slice(0, 5),
       end: formatTime(span.end).slice(0, 5),
-      in: inside.length ? formatTime(inside[0]) : null,
-      out: inside.length ? formatTime(inside[inside.length - 1]) : null,
+      in: punchIn ? formatTime(punchIn) : null,
+      out: punchOut ? formatTime(punchOut) : null,
       minutes,
-      missing: inside.length === 0
+      missing: !punchIn || !punchOut
     };
   });
 }
@@ -218,7 +266,9 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
   const extraMs = Math.max(0, last.getTime() - window.end.getTime());
   const workMs = normalMs + extraMs;
   const workMinutes = Math.floor(workMs / MINUTES_MS);
-  const overtimeMinutes = Math.max(0, workMinutes - config.standardMinutes);
+  const overtimeMinutes = Math.floor(
+    Math.max(0, workMinutes - config.standardMinutes) / OVERTIME_UNIT_MINUTES
+  ) * OVERTIME_UNIT_MINUTES;
 
   const lateMinutes = first.getTime() > window.start.getTime()
     ? Math.ceil((first.getTime() - window.start.getTime()) / MINUTES_MS)

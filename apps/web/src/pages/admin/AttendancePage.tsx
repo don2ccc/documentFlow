@@ -11,7 +11,7 @@ import {
   PlusOutlined, ReloadOutlined, UploadOutlined
 } from '@ant-design/icons';
 import {
-  AttendanceDailyItem, AttendanceResults, AttendanceShiftItem, AttendanceUploadItem,
+  AttendanceDailyItem, AttendanceResults, AttendanceSegment, AttendanceShiftItem, AttendanceUploadItem,
   attendanceApi, downloadBlob
 } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
@@ -172,6 +172,58 @@ export function AttendancePage() {
     return shifts.filter((s) => s.active).map((s) => ({ value: s.code, label: `${s.code} ${s.name}` }));
   }, [currentUpload, shifts]);
 
+  // 打卡列：每个班次时间段固定展示「上班 / 下班」两个应打卡点。
+  // 批次里混了白班 / 夜班时用「第 N 段」通用标题，筛选单个班次后按该班次语义命名。
+  const punchColumnCount = useMemo(() => {
+    const snapshot = currentUpload?.shiftSnapshot ?? null;
+    const counts = snapshot
+      ? Object.values(snapshot).map((s) => s.segments.length)
+      : shifts.map((s) => s.segments.length);
+    return Math.min(6, Math.max(1, ...counts));
+  }, [currentUpload, shifts]);
+
+  const punchColumnLabels = useMemo(() => {
+    const snapshot = currentUpload?.shiftSnapshot ?? null;
+    let segments: AttendanceSegment[] | null = null;
+    if (shiftCode && snapshot?.[shiftCode]) {
+      segments = snapshot[shiftCode].segments;
+    } else {
+      const entries = snapshot ? Object.entries(snapshot).sort(([a], [b]) => a.localeCompare(b)) : [];
+      const all = entries.map(([, s]) => s.segments);
+      const allDay = all.length > 0 && all.every((segs) => !isCrossDay(segs));
+      const allNight = all.length > 0 && all.every((segs) => isCrossDay(segs));
+      if (allDay || allNight) segments = all[0];
+      else if (!entries.length) segments = shifts.find((s) => s.active)?.segments ?? null;
+    }
+    return Array.from({ length: punchColumnCount }, (_, index) => {
+      if (!segments) return `第 ${index + 1} 段`;
+      if (isCrossDay(segments)) return `夜班 ${index + 1}`;
+      return ['上午', '下午', '加班'][index] ?? `第 ${index + 1} 段`;
+    });
+  }, [currentUpload, shiftCode, shifts, punchColumnCount]);
+
+  const renderPunch = (row: AttendanceDailyItem, index: number, side: 'in' | 'out') => {
+    const segment = row.segments?.[index];
+    if (!segment) return <span style={{ color: tokens.text.muted }}>—</span>;
+    const value = segment[side];
+    return value ? value.slice(0, 5) : '';
+  };
+
+  const punchColumns: ColumnsType<AttendanceDailyItem> = punchColumnLabels.map((label, index) => ({
+    title: label,
+    key: `segment-${index}`,
+    children: [
+      {
+        title: '上班', key: `segment-${index}-in`, width: 82, align: 'center',
+        render: (_: unknown, row: AttendanceDailyItem) => renderPunch(row, index, 'in')
+      },
+      {
+        title: '下班', key: `segment-${index}-out`, width: 82, align: 'center',
+        render: (_: unknown, row: AttendanceDailyItem) => renderPunch(row, index, 'out')
+      }
+    ]
+  }));
+
   // ---------------- 班次 ----------------
 
   const openCreateShift = () => {
@@ -318,24 +370,23 @@ export function AttendancePage() {
       render: (v: string | null) => v || '-'
     },
     {
-      title: '班次', dataIndex: 'shiftCode', width: 130,
+      title: '班次', dataIndex: 'shiftCode', width: 140,
       render: (_: unknown, row) => (row.shiftCode
         ? (
-          <Space size={4}>
-            <Tag color="blue" style={{ marginInlineEnd: 0 }}>{row.shiftCode}</Tag>
-            {row.shiftName && <span style={{ color: tokens.text.secondary }}>{row.shiftName}</span>}
-          </Space>
+          <Tooltip
+            title={row.segments?.length
+              ? `班次时间：${row.segments.map((s) => `${s.start}-${s.end}`).join(' / ')}`
+              : undefined}
+          >
+            <Space size={4}>
+              <Tag color="blue" style={{ marginInlineEnd: 0 }}>{row.shiftCode}</Tag>
+              {row.shiftName && <span style={{ color: tokens.text.secondary }}>{row.shiftName}</span>}
+            </Space>
+          </Tooltip>
         )
         : '-')
     },
-    {
-      title: '上班', dataIndex: 'firstIn', width: 90,
-      render: (v: string | null) => v ? v.slice(0, 5) : '-'
-    },
-    {
-      title: '下班', dataIndex: 'lastOut', width: 90,
-      render: (v: string | null) => v ? v.slice(0, 5) : '-'
-    },
+    ...punchColumns,
     { title: '打卡次数', dataIndex: 'punchCount', width: 90, align: 'center' },
     {
       title: '工作时长', dataIndex: 'workMinutes', width: 100, align: 'right',
@@ -532,7 +583,7 @@ export function AttendancePage() {
             loading={loading}
             columns={resultColumns}
             dataSource={data?.items ?? []}
-            scroll={{ x: 1480 }}
+            scroll={{ x: 1860 }}
             pagination={{
               current: page,
               pageSize,
@@ -552,9 +603,11 @@ export function AttendancePage() {
             message="计算规则"
             description={(
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                迟到 / 早退按每行打卡所属班次的时间严格计算（0 宽限，按分钟向上取整）；工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；
-                加班 = 工作时长超过该班次标准工时的部分；打卡次数为奇数时标记「缺卡」，工时仍按实际打卡计算；
-                跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。文件含「班次」列时按行匹配，不再整批统一班次。
+                每个班次时间段都会列出「上班 / 下班」两个应打卡点，没打到的位置留空；第 1~3 段对应白班的上午、下午、加班，
+                夜班按夜班时间段顺序显示。迟到 / 早退按每行打卡所属班次的时间严格计算（0 宽限，按分钟向上取整）；
+                工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；加班 = 工作时长超过该班次标准工时的部分，
+                以 30 分钟为单位向下取整（不足 30 分钟舍去）；打卡次数为奇数时标记「缺卡」，工时仍按实际打卡计算。
+                跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。
               </Typography.Text>
             )}
           />

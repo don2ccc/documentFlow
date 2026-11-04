@@ -190,27 +190,45 @@ export interface ExportDailyRow {
   earlyMinutes: number;
   status: string;
   abnormal: string | null;
+  segments: Array<{
+    start: string;
+    end: string;
+    in: string | null;
+    out: string | null;
+    minutes: number;
+    missing: boolean;
+  }>;
 }
 
 const toHours = (minutes: number) => Number((minutes / 60).toFixed(2));
 
 export function buildAttendanceExport(rows: ExportDailyRow[]): Buffer {
+  const segmentCount = Math.min(6, Math.max(1, ...rows.map((r) => r.segments?.length ?? 0)));
+  const segmentHeader = Array.from({ length: segmentCount }, (_, i) => ([
+    `第${i + 1}段上班`, `第${i + 1}段下班`
+  ])).flat();
   const header = [
-    '排班日期', '工号', '姓名', '部门', '班次', '上班打卡', '下班打卡', '打卡次数',
+    '排班日期', '工号', '姓名', '部门', '班次', ...segmentHeader, '打卡次数',
     '工作时长(小时)', '加班时长(小时)', '迟到(分钟)', '早退(分钟)', '状态', '备注'
   ];
-  const body = rows.map((r) => [
-    r.workDate, r.employeeNo, r.employeeName, r.department ?? '',
-    [r.shiftCode, r.shiftName].filter(Boolean).join(' '),
-    r.firstIn ?? '', r.lastOut ?? '', r.punchCount,
-    toHours(r.workMinutes), toHours(r.overtimeMinutes), r.lateMinutes, r.earlyMinutes,
-    r.status, r.abnormal ?? ''
-  ]);
+  const body = rows.map((r) => {
+    const punches = Array.from({ length: segmentCount }, (_, i) => {
+      const segment = r.segments?.[i];
+      return [segment?.in ?? '', segment?.out ?? ''];
+    }).flat();
+    return [
+      r.workDate, r.employeeNo, r.employeeName, r.department ?? '',
+      [r.shiftCode, r.shiftName].filter(Boolean).join(' '),
+      ...punches, r.punchCount,
+      toHours(r.workMinutes), toHours(r.overtimeMinutes), r.lateMinutes, r.earlyMinutes,
+      r.status, r.abnormal ?? ''
+    ];
+  });
   const sheet = XLSX.utils.aoa_to_sheet([header, ...body]);
   sheet['!cols'] = [
-    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 10 },
-    { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 },
-    { wch: 10 }, { wch: 36 }
+    { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 18 },
+    ...Array.from({ length: segmentCount * 2 }, () => ({ wch: 12 })),
+    { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 36 }
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, '考勤结果');

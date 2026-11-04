@@ -52,7 +52,7 @@ describe('班次时间段校验', () => {
 });
 
 describe('computeDailyResults', () => {
-  it('满勤：11 小时工时，超过 8 小时部分计加班', () => {
+  it('满勤：11 小时工时，超过 8 小时的部分按 30 分钟向下取整计加班', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-10-23 07:20:00'),
       punch('2026-10-23 11:31:00'),
@@ -66,7 +66,7 @@ describe('computeDailyResults', () => {
     expect(row.lastOut).toBe('20:09:00');
     expect(row.normalMinutes).toBe(660);
     expect(row.workMinutes).toBe(669);
-    expect(row.overtimeMinutes).toBe(189);
+    expect(row.overtimeMinutes).toBe(180);
     expect(row.lateMinutes).toBe(0);
     expect(row.earlyMinutes).toBe(0);
     expect(row.status).toBe('正常');
@@ -84,7 +84,7 @@ describe('computeDailyResults', () => {
     expect(row.lateMinutes).toBe(10);
     expect(row.earlyMinutes).toBe(10);
     expect(row.workMinutes).toBe(640);
-    expect(row.overtimeMinutes).toBe(160);
+    expect(row.overtimeMinutes).toBe(150);
     expect(row.status).toBe('迟到/早退');
   });
 
@@ -116,7 +116,7 @@ describe('computeDailyResults', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].workDate).toBe('2026-10-23');
     expect(rows[0].normalMinutes).toBe(658);
-    expect(rows[0].overtimeMinutes).toBe(178);
+    expect(rows[0].overtimeMinutes).toBe(150);
     expect(rows[0].earlyMinutes).toBe(2);
   });
 
@@ -128,6 +128,52 @@ describe('computeDailyResults', () => {
       punch('2026-10-24 20:00:00')
     ]);
     expect(rows.map((r) => r.workDate)).toEqual(['2026-10-23', '2026-10-24']);
+  });
+
+  it('每个时间段都显示上班 / 下班打卡点，打卡不在段内也能归位', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:19:57'),
+      punch('2026-11-01 11:34:00'),
+      punch('2026-11-01 11:45:11'),
+      punch('2026-11-01 16:34:31'),
+      punch('2026-11-01 16:45:24'),
+      punch('2026-11-01 20:08:04')
+    ]);
+    expect(row.segments.map((s) => [s.start, s.end, s.in, s.out, s.missing])).toEqual([
+      ['07:30', '11:30', '07:19:57', '11:34:00', false],
+      ['12:30', '16:30', '11:45:11', '16:34:31', false],
+      ['17:00', '20:00', '16:45:24', '20:08:04', false]
+    ]);
+  });
+
+  it('漏打的时间段留空，不把相邻打卡硬塞进去', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:20:00'),
+      punch('2026-11-01 11:30:00'),
+      punch('2026-11-01 12:30:00'),
+      punch('2026-11-01 16:30:00'),
+      punch('2026-11-01 20:05:00')
+    ]);
+    expect(row.segments[2].in).toBeNull();
+    expect(row.segments[2].out).toBe('20:05:00');
+    expect(row.segments[2].missing).toBe(true);
+  });
+
+  it('重复刷卡的额外记录不会占用后面的应打卡点', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:21:24'),
+      punch('2026-11-01 11:32:25'),
+      punch('2026-11-01 11:53:59'),
+      punch('2026-11-01 16:34:03'),
+      punch('2026-11-01 16:47:03'),
+      punch('2026-11-01 16:47:32'),
+      punch('2026-11-01 20:01:43')
+    ]);
+    expect(row.segments.map((s) => [s.in, s.out])).toEqual([
+      ['07:21:24', '11:32:25'],
+      ['11:53:59', '16:34:03'],
+      ['16:47:03', '20:01:43']
+    ]);
   });
 });
 
@@ -152,11 +198,11 @@ describe('computeDailyResultsForShifts（原始数据自带班次列）', () => 
     expect(m10.workDate).toBe('2026-11-01');
     expect(m10.shiftName).toBe('白班1#');
     expect(m10.workMinutes).toBe(668);
-    expect(m10.overtimeMinutes).toBe(188);
+    expect(m10.overtimeMinutes).toBe(180);
     expect(m10.status).toBe('正常');
     expect(m21.workDate).toBe('2026-11-01');
     expect(m21.workMinutes).toBe(658);
-    expect(m21.overtimeMinutes).toBe(178);
+    expect(m21.overtimeMinutes).toBe(150);
     expect(m21.earlyMinutes).toBe(2);
   });
 
