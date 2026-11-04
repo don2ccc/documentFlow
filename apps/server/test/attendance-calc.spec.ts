@@ -231,7 +231,7 @@ describe('OT 申请（加班单）', () => {
     otCode: 'OTS'
   });
 
-  it('有 OT 申请：按申请区间全天计加班，扣除班次间的休息，不判迟到早退', () => {
+  it('有 OT 申请：按每个时间段实际上下班打卡累计加班，不判迟到早退', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-11-01 07:19:00'),
       punch('2026-11-01 11:34:00'),
@@ -240,15 +240,29 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 17:00:00'),
       punch('2026-11-01 20:05:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 07:30-20:00 = 750 分钟，扣除午休 60 + 晚餐 30 = 660 分钟
-    expect(row.overtimeMinutes).toBe(660);
+    // 第 1 段 4h + 第 2 段 12:40-16:30 共 3h50m + 第 3 段 3h = 650 分钟 → 630
+    expect(row.overtimeMinutes).toBe(630);
     expect(row.standardMinutes).toBe(0);
     expect(row.lateMinutes).toBe(0);
     expect(row.earlyMinutes).toBe(0);
     expect(row.status).toBe('OT加班');
     expect(row.abnormal).toContain('OT 申请');
     expect(row.abnormal).toContain('07:30-20:00');
-    expect(row.abnormal).toContain('已扣休息 90 分钟');
+  });
+
+  it('中午晚回岗（13:16）按实际在岗时间累计，不按首末卡整段算', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:20:00'),
+      punch('2026-11-01 11:32:00'),
+      punch('2026-11-01 13:16:00'),
+      punch('2026-11-01 16:33:00'),
+      punch('2026-11-01 16:44:00'),
+      punch('2026-11-01 20:02:00')
+    ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
+    // 4h + 13:16-16:30 共 3h14m + 3h = 614 分钟 → 600（10h）
+    expect(row.overtimeMinutes).toBe(600);
+    expect(row.workMinutes).toBe(614);
+    expect(row.status).toBe('OT加班');
   });
 
   it('OT 申请区间内打卡不满时按实际时长，仍按 30 分钟向下取整', () => {
@@ -256,7 +270,7 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 07:30:00'),
       punch('2026-11-01 16:44:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 07:30-16:44 = 554 分钟，扣午休 60 + 16:30-16:44 的 14 分钟休息 = 480
+    // 第 1 段 4h（缺下班卡按段尾补）+ 第 2 段 12:30-16:30 4h = 480
     expect(row.overtimeMinutes).toBe(480);
     expect(row.status).toBe('OT加班');
   });

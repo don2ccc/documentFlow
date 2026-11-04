@@ -144,8 +144,6 @@ export interface ShiftWindow {
   start: Date;
   end: Date;
   spans: ShiftSpan[];
-  /** 相邻时间段之间的休息间隔（如午休 / 晚餐），计加班时要扣除 */
-  gaps: ShiftSpan[];
   crossDay: boolean;
 }
 
@@ -195,18 +193,11 @@ export function buildShiftWindow(date: string, segments: ShiftSegmentValue[]): S
     }));
   if (spans.length === 0) throw new Error('班次时间段无效');
   const end = spans[spans.length - 1].end;
-  const gaps: ShiftSpan[] = [];
-  for (let i = 1; i < spans.length; i += 1) {
-    if (spans[i].start.getTime() > spans[i - 1].end.getTime()) {
-      gaps.push({ start: spans[i - 1].end, end: spans[i].start });
-    }
-  }
   return {
     date,
     start,
     end,
     spans,
-    gaps,
     crossDay: end.getTime() - start.getTime() > DAY_MINUTES * MINUTES_MS
   };
 }
@@ -252,6 +243,8 @@ export function regularEndOf(window: ShiftWindow, standardMinutes: number): Date
 
 interface SegmentAlignment {
   segments: DailySegmentDetail[];
+  /** 每个时间段实际有效的工作区间（已按班次边界裁剪；整段无打卡且不在连续在岗区间内时为 null） */
+  workedIntervals: Array<{ start: Date; end: Date } | null>;
   /** 正常班次时段内仍然空着的应打卡点，如「第 2 段上班」 */
   missingPoints: string[];
 }
@@ -347,13 +340,29 @@ function buildSegmentDetail(
     };
   });
 
+  // 实际工作时长按「每个时间段自己的上下班打卡」算，而不是首末卡整段相减：
+  // 中午 13:16 才回来上班，12:30-13:16 就不算工作；午休 / 晚餐间隔也不计。
+  // 缺卡时按班次边界补足，但补足范围不能超出当天首卡 ~ 末卡（人不在场的时间不能凭空补）。
+  const firstTime = times[0];
+  const lastTime = times[times.length - 1];
+  const workedIntervals = window.spans.map((span, index) => {
+    const punchIn = picked.get(`${index}-in`) ?? null;
+    const punchOut = picked.get(`${index}-out`) ?? null;
+    const availableStart = new Date(Math.max(span.start.getTime(), firstTime.getTime()));
+    const availableEnd = new Date(Math.min(span.end.getTime(), lastTime.getTime()));
+    if (availableEnd.getTime() <= availableStart.getTime()) return null;
+    const start = punchIn && punchIn.getTime() > availableStart.getTime() ? punchIn : availableStart;
+    const end = punchOut && punchOut.getTime() < availableEnd.getTime() ? punchOut : availableEnd;
+    return end.getTime() > start.getTime() ? { start, end } : null;
+  });
+
   // 加班时段可以没有打卡：只把「正常下班时间」之前的空缺算作缺卡。
   const regularEndMs = regularEndOf(window, standardMinutes).getTime();
   const missingPoints = expected
     .filter((point) => !picked.has(`${point.index}-${point.side}`) && point.at.getTime() <= regularEndMs)
     .map((point) => `第 ${point.index + 1} 段${point.side === 'in' ? '上班' : '下班'}`);
 
-  return { segments, missingPoints };
+  return { segments, workedIntervals, missingPoints };
 }
 
 function calcGroup(
@@ -374,40 +383,47 @@ function calcGroup(
   const workMs = normalMs + extraMs;
   const workMinutes = Math.floor(workMs / MINUTES_MS);
 
-  const { segments, missingPoints } = buildSegmentDetail(window, times, config.standardMinutes);
+  const { segments, workedIntervals, missingPoints } = buildSegmentDetail(
+    window, times, config.standardMinutes
+  );
   const regularEnd = regularEndOf(window, config.standardMinutes);
   const punchCount = punches.length;
   const sample = punches[0];
 
-  // 有 OT 申请：按申请区间裁剪后的实际打卡全部算加班，不判迟到 / 早退；缺卡仍记录
+  // 有 OT 申请：按申请区间裁剪后的实际工作区间算加班，不判迟到 / 早退；缺卡仍记录
   const applied = otRanges.filter((range) => (
     range.start.getTime() < window.end.getTime() && range.end.getTime() > window.start.getTime()
   ));
   if (applied.length) {
-    let otMs = 0;
-    let breakMs = 0;
-    for (const range of applied) {
-      const startMs = Math.max(first.getTime(), range.start.getTime());
-      const endMs = Math.min(last.getTime(), range.end.getTime());
-      if (endMs <= startMs) continue;
-      let spanMs = endMs - startMs;
-      // 扣除班次时间段之间的休息（午休 / 晚餐），休息不计入加班
-      for (const gap of window.gaps) {
-        const cut = Math.max(0, Math.min(endMs, gap.end.getTime()) - Math.max(startMs, gap.start.getTime()));
-        spanMs -= cut;
-        breakMs += cut;
+    // 每段先取整到分钟再加总：打卡差几十秒（如 07:30:26）不会白丢半小时
+    const overlapMinutes = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
+      Math.round(overlapMs(aStart, aEnd, bStart, bEnd) / MINUTES_MS);
+    let otMinutes = 0;
+    // 班次内：按每个时间段自己的上下班打卡，休息与未在岗的空档都不计
+    for (const interval of workedIntervals) {
+      if (!interval) continue;
+      for (const range of applied) {
+        otMinutes += overlapMinutes(interval.start, interval.end, range.start, range.end);
       }
-      otMs += Math.max(0, spanMs);
     }
-    // 先按分钟取整再折算 30 分钟，避免打卡差几十秒（如 07:30:26）白丢半小时
-    const otMinutes = Math.round(otMs / MINUTES_MS);
+    // 班次开始前 / 结束后，只要落在 OT 申请范围内也算加班
+    const firstSpan = window.spans[0];
+    const lastSpan = window.spans[window.spans.length - 1];
+    if (first.getTime() < firstSpan.start.getTime()) {
+      for (const range of applied) {
+        otMinutes += overlapMinutes(first, firstSpan.start, range.start, range.end);
+      }
+    }
+    if (last.getTime() > lastSpan.end.getTime()) {
+      for (const range of applied) {
+        otMinutes += overlapMinutes(lastSpan.end, last, range.start, range.end);
+      }
+    }
     const overtimeMinutes = Math.floor(otMinutes / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
-    const breakMinutes = Math.floor(breakMs / MINUTES_MS);
     const rangeText = applied
       .map((range) => `${formatTime(range.start).slice(0, 5)}-${formatTime(range.end).slice(0, 5)}`)
       .join('、');
     const codeText = applied.map((range) => range.otCode).filter(Boolean)[0];
-    const breakText = breakMinutes > 0 ? `（已扣休息 ${breakMinutes} 分钟）` : '';
     const missingText = missingPoints.length ? `；缺卡：${missingPoints.join('、')}` : '';
     return {
       workDate: window.date,
@@ -421,12 +437,13 @@ function calcGroup(
       punchCount,
       standardMinutes: 0,
       normalMinutes: 0,
-      workMinutes,
+      // OT 当天的工作时长与加班同口径（按时间段实际在岗时间）
+      workMinutes: otMinutes,
       overtimeMinutes,
       lateMinutes: 0,
       earlyMinutes: 0,
       status: 'OT加班',
-      abnormal: `OT 申请 ${rangeText}${codeText ? `（${codeText}）` : ''}，全天计加班${breakText}${missingText}`,
+      abnormal: `OT 申请 ${rangeText}${codeText ? `（${codeText}）` : ''}，全天计加班${missingText}`,
       segments
     };
   }
