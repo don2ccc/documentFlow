@@ -184,6 +184,7 @@ export interface ExportDailyRow {
   firstIn: string | null;
   lastOut: string | null;
   punchCount: number;
+  standardMinutes: number;
   workMinutes: number;
   overtimeMinutes: number;
   lateMinutes: number;
@@ -209,7 +210,7 @@ export function buildAttendanceExport(rows: ExportDailyRow[]): Buffer {
   ])).flat();
   const header = [
     '排班日期', '工号', '姓名', '部门', '班次', ...segmentHeader, '打卡次数',
-    '工作时长(小时)', '加班时长(小时)', '迟到(分钟)', '早退(分钟)', '状态', '备注'
+    '正常工时(小时)', '工作时长(小时)', '加班时长(小时)', '迟到(分钟)', '早退(分钟)', '状态', '备注'
   ];
   const body = rows.map((r) => {
     const punches = Array.from({ length: segmentCount }, (_, i) => {
@@ -220,7 +221,7 @@ export function buildAttendanceExport(rows: ExportDailyRow[]): Buffer {
       r.workDate, r.employeeNo, r.employeeName, r.department ?? '',
       [r.shiftCode, r.shiftName].filter(Boolean).join(' '),
       ...punches, r.punchCount,
-      toHours(r.workMinutes), toHours(r.overtimeMinutes), r.lateMinutes, r.earlyMinutes,
+      toHours(r.standardMinutes), toHours(r.workMinutes), toHours(r.overtimeMinutes), r.lateMinutes, r.earlyMinutes,
       r.status, r.abnormal ?? ''
     ];
   });
@@ -228,7 +229,7 @@ export function buildAttendanceExport(rows: ExportDailyRow[]): Buffer {
   sheet['!cols'] = [
     { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 18 },
     ...Array.from({ length: segmentCount * 2 }, () => ({ wch: 12 })),
-    { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 36 }
+    { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 36 }
   ];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, '考勤结果');

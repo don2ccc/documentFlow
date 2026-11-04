@@ -34,6 +34,9 @@ export class AttendanceDaily {
   @Column({ type: 'varchar', length: 8, nullable: true }) lastOut!: string | null;
   @Column({ type: 'int', default: 0 }) punchCount!: number;
 
+  /** 班次标准工时（分钟），例如 8 小时 = 480 */
+  @Column({ type: 'int', default: 480 }) standardMinutes!: number;
+
   /** 班次时间段内的工作分钟数（不含班次结束后的加班） */
   @Column({ type: 'int', default: 0 }) normalMinutes!: number;
   /** 总工作时长 = normalMinutes + 班次结束后的额外时长 */

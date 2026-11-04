@@ -389,6 +389,10 @@ export function AttendancePage() {
     ...punchColumns,
     { title: '打卡次数', dataIndex: 'punchCount', width: 90, align: 'center' },
     {
+      title: '正常工时', dataIndex: 'standardMinutes', width: 100, align: 'right',
+      render: (v: number) => <span style={{ color: tokens.text.secondary }}>{hours(v ?? 0)} h</span>
+    },
+    {
       title: '工作时长', dataIndex: 'workMinutes', width: 100, align: 'right',
       render: (v: number) => <strong>{hours(v)} h</strong>
     },
@@ -583,7 +587,7 @@ export function AttendancePage() {
             loading={loading}
             columns={resultColumns}
             dataSource={data?.items ?? []}
-            scroll={{ x: 1860 }}
+            scroll={{ x: 1960 }}
             pagination={{
               current: page,
               pageSize,
@@ -604,9 +608,10 @@ export function AttendancePage() {
             description={(
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 每个班次时间段都会列出「上班 / 下班」两个应打卡点，没打到的位置留空；第 1~3 段对应白班的上午、下午、加班，
-                夜班按夜班时间段顺序显示。迟到 / 早退按每行打卡所属班次的时间严格计算（0 宽限，按分钟向上取整）；
-                工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；加班 = 工作时长超过该班次标准工时的部分，
-                以 30 分钟为单位向下取整（不足 30 分钟舍去）；打卡次数为奇数时标记「缺卡」，工时仍按实际打卡计算。
+                夜班按夜班时间段顺序显示。迟到按上班时间、早退按「正常下班时间」计算（0 宽限，按分钟向上取整），
+                加班时段不参与迟到 / 早退，加班时段可以不打卡。正常工时 = 班次配置的标准工时（如 480 分钟 = 8 小时）；
+                工作时长 = 班次各时间段内的打卡交集 + 班次结束后的时间；加班 = 工作时长超过正常工时的部分，
+                以 30 分钟为单位向下取整（不足 30 分钟舍去）；正常班次时段内有应打卡点没打才标记「缺卡」，工时仍按实际打卡计算。
                 跨天班次（如 20:00-08:00）会把次日凌晨的打卡归到前一天。
               </Typography.Text>
             )}

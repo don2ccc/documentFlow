@@ -607,6 +607,7 @@ export interface AttendanceDailyItem {
   firstIn: string | null;
   lastOut: string | null;
   punchCount: number;
+  standardMinutes: number;
   normalMinutes: number;
   workMinutes: number;
   overtimeMinutes: number;

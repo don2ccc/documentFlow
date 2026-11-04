@@ -26,6 +26,15 @@ const M21 = {
   standardMinutes: 480
 };
 
+const M12 = {
+  segments: [
+    { start: '08:00', end: '12:00' },
+    { start: '13:00', end: '17:00' },
+    { start: '17:30', end: '20:30' }
+  ],
+  standardMinutes: 480
+};
+
 function punch(punchAt: string) {
   return { employeeNo: '10000001', employeeName: '测试', department: '总公司', machine: '1', punchAt };
 }
@@ -72,20 +81,32 @@ describe('computeDailyResults', () => {
     expect(row.status).toBe('正常');
   });
 
-  it('迟到 10 分钟、早退 10 分钟都要计', () => {
+  it('迟到 10 分钟、早退 10 分钟都要计（早退只算正常班次部分）', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-10-23 07:40:00'),
       punch('2026-10-23 11:30:00'),
       punch('2026-10-23 12:30:00'),
-      punch('2026-10-23 16:30:00'),
-      punch('2026-10-23 17:00:00'),
-      punch('2026-10-23 19:50:00')
+      punch('2026-10-23 16:20:00')
     ]);
     expect(row.lateMinutes).toBe(10);
     expect(row.earlyMinutes).toBe(10);
-    expect(row.workMinutes).toBe(640);
-    expect(row.overtimeMinutes).toBe(150);
+    expect(row.workMinutes).toBe(460);
+    expect(row.overtimeMinutes).toBe(0);
     expect(row.status).toBe('迟到/早退');
+  });
+
+  it('加班时段没有打卡不算早退、不算缺卡', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-10-23 07:30:00'),
+      punch('2026-10-23 11:30:00'),
+      punch('2026-10-23 12:30:00'),
+      punch('2026-10-23 16:30:00')
+    ]);
+    expect(row.standardMinutes).toBe(480);
+    expect(row.segments.map((s) => s.missing)).toEqual([false, false, true]);
+    expect(row.earlyMinutes).toBe(0);
+    expect(row.overtimeMinutes).toBe(0);
+    expect(row.status).toBe('正常');
   });
 
   it('只打一次卡：标记缺卡，工时按实际（0）计算', () => {
@@ -93,17 +114,22 @@ describe('computeDailyResults', () => {
     expect(row.punchCount).toBe(1);
     expect(row.status).toBe('缺卡');
     expect(row.workMinutes).toBe(0);
-    expect(row.abnormal).toContain('缺少配对打卡');
+    expect(row.abnormal).toContain('缺卡');
   });
 
-  it('只打上下班两次卡（中间不打卡）不误判缺卡', () => {
+  it('只打上下班两次卡：中间的应打卡点留空，不硬塞', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-10-23 07:20:00'),
       punch('2026-10-23 20:09:00')
     ]);
     expect(row.punchCount).toBe(2);
-    expect(row.status).toBe('正常');
+    expect(row.segments.map((s) => [s.in, s.out])).toEqual([
+      ['07:20:00', null],
+      [null, null],
+      [null, '20:09:00']
+    ]);
     expect(row.workMinutes).toBe(669);
+    expect(row.status).toBe('缺卡');
   });
 
   it('跨天夜班：次日凌晨打卡归到前一天', () => {
@@ -117,7 +143,9 @@ describe('computeDailyResults', () => {
     expect(rows[0].workDate).toBe('2026-10-23');
     expect(rows[0].normalMinutes).toBe(658);
     expect(rows[0].overtimeMinutes).toBe(150);
-    expect(rows[0].earlyMinutes).toBe(2);
+    // 夜班正常下班时间是 05:00（20:00 起累计满 8 小时），之后算加班，不再算早退
+    expect(rows[0].earlyMinutes).toBe(0);
+    expect(rows[0].status).toBe('正常');
   });
 
   it('多天数据按员工拆成多行', () => {
@@ -174,6 +202,24 @@ describe('computeDailyResults', () => {
       ['11:53:59', '16:34:03'],
       ['16:47:03', '20:01:43']
     ]);
+    expect(row.status).toBe('正常');
+  });
+
+  it('相邻应打卡点挨得近时按整体最优对齐，不会前后串位', () => {
+    const [row] = computeDailyResults(M12, [
+      punch('2026-11-01 07:55:35'),
+      punch('2026-11-01 12:00:41'),
+      punch('2026-11-01 12:14:56'),
+      punch('2026-11-01 17:15:12'),
+      punch('2026-11-01 17:27:04'),
+      punch('2026-11-01 20:30:12')
+    ]);
+    expect(row.segments.map((s) => [s.start, s.in, s.out])).toEqual([
+      ['08:00', '07:55:35', '12:00:41'],
+      ['13:00', '12:14:56', '17:15:12'],
+      ['17:30', '17:27:04', '20:30:12']
+    ]);
+    expect(row.status).toBe('正常');
   });
 });
 
@@ -199,11 +245,14 @@ describe('computeDailyResultsForShifts（原始数据自带班次列）', () => 
     expect(m10.shiftName).toBe('白班1#');
     expect(m10.workMinutes).toBe(668);
     expect(m10.overtimeMinutes).toBe(180);
-    expect(m10.status).toBe('正常');
+    // 只打了两头两次卡，中间的应打卡点为空白，按新口径算缺卡
+    expect(m10.status).toBe('缺卡');
     expect(m21.workDate).toBe('2026-11-01');
     expect(m21.workMinutes).toBe(658);
     expect(m21.overtimeMinutes).toBe(150);
-    expect(m21.earlyMinutes).toBe(2);
+    expect(m21.standardMinutes).toBe(480);
+    expect(m21.earlyMinutes).toBe(0);
+    expect(m21.status).toBe('正常');
   });
 
   it('班次编码忽略大小写与首尾空格', () => {

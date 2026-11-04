@@ -6,10 +6,11 @@ import { ShiftSegmentValue } from './entities/attendance-shift.entity';
  *
  * 计算口径（与业务确认过）：
  *   1. 原始数据里带「班次」列时按每行班次分别计算；没有该列时整批使用默认班次；
- *   2. 迟到 / 早退 0 分钟宽限，按秒向上取整到分钟；
+ *   2. 迟到 / 早退 0 分钟宽限，按秒向上取整到分钟；早退只算到「正常下班时间」
+ *      （按班次各时间段累计到标准工时为止），加班时段不参与迟到 / 早退；
  *   3. 工作时长 = 打卡区间与前班次各时间段的交集之和，加上班次结束后的时间；
  *   4. 加班时长 = 工作时长 - 标准工时，按 30 分钟为单位向下取整（不足 30 分钟舍去，不足 0 记 0）；
- *   5. 打卡次数为奇数（含只打 1 次）视为缺卡，工时仍按实际打卡计算；
+ *   5. 正常班次时段内有应打卡点没打视为缺卡；加班时段可以没有打卡，不算缺卡；
  *   6. 每个班次时间段都输出「上班 / 下班」两个应打卡点，缺卡的位置留空。
  *
  * 跨天班次（如 20:00-00:00 / 01:00-08:00）会把次日凌晨的打卡归到前一天，
@@ -48,6 +49,8 @@ export interface DailyResult {
   firstIn: string | null;
   lastOut: string | null;
   punchCount: number;
+  /** 班次标准工时（分钟），例如 8 小时 = 480 */
+  standardMinutes: number;
   normalMinutes: number;
   workMinutes: number;
   overtimeMinutes: number;
@@ -192,52 +195,114 @@ function overlapMs(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number {
   return Math.max(0, end - start);
 }
 
+interface Alignment {
+  count: number;
+  distance: number;
+  choice: 'match' | 'skipPunch' | 'skipPoint';
+}
+
+/** 匹配数多的优先；数量相同则总偏差小的优先 */
+function isBetter(a: Alignment, b: Alignment): boolean {
+  if (a.count !== b.count) return a.count > b.count;
+  return a.distance < b.distance;
+}
+
+/**
+ * 正常下班时间：从班次开始依次累加各时间段，累计到标准工时的那一刻。
+ * 之后的部分算加班时段，不参与早退判断。标准工时超过班次总时长时取班次结束。
+ */
+export function regularEndOf(window: ShiftWindow, standardMinutes: number): Date {
+  let remaining = Math.max(0, standardMinutes) * MINUTES_MS;
+  for (const span of window.spans) {
+    const duration = span.end.getTime() - span.start.getTime();
+    if (remaining <= duration) return new Date(span.start.getTime() + remaining);
+    remaining -= duration;
+  }
+  return window.end;
+}
+
+interface SegmentAlignment {
+  segments: DailySegmentDetail[];
+  /** 正常班次时段内仍然空着的应打卡点，如「第 2 段上班」 */
+  missingPoints: string[];
+}
+
 /**
  * 把打卡分配到每个班次时间段的「上班 / 下班」两个应打卡点。
  *
  * 打卡时间通常会比班次边界早/晚几分钟（例如 7:19 打 7:30 的上班卡），
- * 因此按时间顺序把打卡匹配到最近的、尚未填写的应打卡点，而不是要求
- * 打卡必须落在时间段内。匹配距离过远的打卡视为多余打卡（例如同一次
- * 打卡重复刷两下），不会占用后面的应打卡点；某一点没有匹配到就留空。
+ * 因此不要求打卡落在时间段内，而是把「打卡序列」和「应打卡点序列」做
+ * 一次整体最优对齐：匹配数尽量多、总偏差尽量小，且顺序不能乱。
+ *
+ * 这样同一次打卡重复刷两下（如 16:47:03 / 16:47:32）只会占用一个应打卡点，
+ * 多余的那次被跳过；某个应打卡点确实没有打卡时留空，不硬塞相邻打卡。
  */
-function buildSegmentDetail(window: ShiftWindow, times: Date[]): DailySegmentDetail[] {
+function buildSegmentDetail(
+  window: ShiftWindow,
+  times: Date[],
+  standardMinutes: number
+): SegmentAlignment {
+  /** 上班最多提前/延后 90 分钟，下班最多提前/延后 240 分钟 */
   const IN_TOLERANCE_MS = 90 * MINUTES_MS;
   const OUT_TOLERANCE_MS = 240 * MINUTES_MS;
-  /** 同一次打卡重复刷两下的间隔，直接忽略后一次 */
-  const DUPLICATE_WINDOW_MS = 3 * MINUTES_MS;
 
   const expected = window.spans.flatMap((span, index) => ([
     { index, side: 'in' as const, at: span.start },
     { index, side: 'out' as const, at: span.end }
   ]));
-  const picked = new Map<string, Date>();
-  let cursor = 0;
-  let lastPickedAt: Date | null = null;
 
+  // 同一次刷卡重复刷两下（间隔 ≤ 3 分钟）合并成一次：上班取先刷的那次，下班取后刷的那次
+  const DUPLICATE_WINDOW_MS = 3 * MINUTES_MS;
+  const clusters: Array<{ first: Date; last: Date }> = [];
   for (const time of times) {
-    if (lastPickedAt && time.getTime() - lastPickedAt.getTime() <= DUPLICATE_WINDOW_MS) continue;
+    const current = clusters[clusters.length - 1];
+    if (current && time.getTime() - current.first.getTime() <= DUPLICATE_WINDOW_MS) current.last = time;
+    else clusters.push({ first: time, last: time });
+  }
 
-    let bestIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let i = cursor; i < expected.length; i += 1) {
-      const distance = Math.abs(expected[i].at.getTime() - time.getTime());
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = i;
-      }
+  const n = clusters.length;
+  const m = expected.length;
+  const punchAt = (i: number, j: number) => (expected[j].side === 'in' ? clusters[i].first : clusters[i].last);
+  const toleranceAt = (j: number) => (expected[j].side === 'in' ? IN_TOLERANCE_MS : OUT_TOLERANCE_MS);
+
+  const memo = new Map<number, Alignment>();
+  const solve = (i: number, j: number): Alignment => {
+    if (i >= n || j >= m) return { count: 0, distance: 0, choice: 'skipPoint' };
+    const key = i * (m + 1) + j;
+    const cached = memo.get(key);
+    if (cached) return cached;
+
+    let best: Alignment = { ...solve(i + 1, j), choice: 'skipPunch' };
+    const skipPoint = solve(i, j + 1);
+    if (isBetter(skipPoint, best)) best = { ...skipPoint, choice: 'skipPoint' };
+
+    const distance = Math.abs(punchAt(i, j).getTime() - expected[j].at.getTime());
+    if (distance <= toleranceAt(j)) {
+      const rest = solve(i + 1, j + 1);
+      const matched = { count: rest.count + 1, distance: rest.distance + distance, choice: 'match' as const };
+      if (isBetter(matched, best)) best = matched;
     }
-    if (bestIndex < 0) break;
+    memo.set(key, best);
+    return best;
+  };
 
-    const point = expected[bestIndex];
-    const tolerance = point.side === 'in' ? IN_TOLERANCE_MS : OUT_TOLERANCE_MS;
-    if (bestDistance <= tolerance || bestIndex === expected.length - 1) {
-      picked.set(`${point.index}-${point.side}`, time);
-      cursor = bestIndex + 1;
-      lastPickedAt = time;
+  const picked = new Map<string, Date>();
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    const step = solve(i, j).choice;
+    if (step === 'match') {
+      picked.set(`${expected[j].index}-${expected[j].side}`, punchAt(i, j));
+      i += 1;
+      j += 1;
+    } else if (step === 'skipPunch') {
+      i += 1;
+    } else {
+      j += 1;
     }
   }
 
-  return window.spans.map((span, index) => {
+  const segments = window.spans.map((span, index) => {
     const punchIn = picked.get(`${index}-in`) ?? null;
     const punchOut = picked.get(`${index}-out`) ?? null;
     const minutes = punchIn && punchOut
@@ -252,6 +317,14 @@ function buildSegmentDetail(window: ShiftWindow, times: Date[]): DailySegmentDet
       missing: !punchIn || !punchOut
     };
   });
+
+  // 加班时段可以没有打卡：只把「正常下班时间」之前的空缺算作缺卡。
+  const regularEndMs = regularEndOf(window, standardMinutes).getTime();
+  const missingPoints = expected
+    .filter((point) => !picked.has(`${point.index}-${point.side}`) && point.at.getTime() <= regularEndMs)
+    .map((point) => `第 ${point.index + 1} 段${point.side === 'in' ? '上班' : '下班'}`);
+
+  return { segments, missingPoints };
 }
 
 function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: PunchInput[]): DailyResult {
@@ -270,16 +343,20 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
     Math.max(0, workMinutes - config.standardMinutes) / OVERTIME_UNIT_MINUTES
   ) * OVERTIME_UNIT_MINUTES;
 
+  const { segments, missingPoints } = buildSegmentDetail(window, times, config.standardMinutes);
+  const regularEnd = regularEndOf(window, config.standardMinutes);
+
   const lateMinutes = first.getTime() > window.start.getTime()
     ? Math.ceil((first.getTime() - window.start.getTime()) / MINUTES_MS)
     : 0;
-  const earlyMinutes = last.getTime() < window.end.getTime()
-    ? Math.ceil((window.end.getTime() - last.getTime()) / MINUTES_MS)
+  // 早退只看正常班次时段：加班时段（正常下班时间之后）没打满不算早退。
+  const earlyMinutes = last.getTime() < regularEnd.getTime()
+    ? Math.ceil((regularEnd.getTime() - last.getTime()) / MINUTES_MS)
     : 0;
 
   const punchCount = punches.length;
-  // 奇数说明有一次打卡没有配对（只打一次、漏打下班卡等）。偶数视为正常进出。
-  const missingCard = punchCount % 2 === 1;
+  // 正常班次时段内有应打卡点没打才算缺卡；加班时段的空缺不计。
+  const missingCard = missingPoints.length > 0;
 
   let status = '正常';
   if (missingCard) status = '缺卡';
@@ -291,7 +368,7 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
   const reasons: string[] = [];
   if (lateMinutes > 0) reasons.push(`迟到 ${lateMinutes} 分钟`);
   if (earlyMinutes > 0) reasons.push(`早退 ${earlyMinutes} 分钟`);
-  if (missingCard) reasons.push(`打卡 ${punchCount} 次，缺少配对打卡`);
+  if (missingCard) reasons.push(`缺卡：${missingPoints.join('、')}`);
 
   const sample = punches[0];
   return {
@@ -304,6 +381,7 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
     firstIn: formatTime(first),
     lastOut: formatTime(last),
     punchCount,
+    standardMinutes: config.standardMinutes,
     normalMinutes: Math.floor(normalMs / MINUTES_MS),
     workMinutes,
     overtimeMinutes,
@@ -311,7 +389,7 @@ function calcGroup(window: ShiftWindow, config: NamedShiftConfig, punches: Punch
     earlyMinutes,
     status,
     abnormal: reasons.length ? reasons.join('；') : null,
-    segments: buildSegmentDetail(window, times)
+    segments
   };
 }
 
