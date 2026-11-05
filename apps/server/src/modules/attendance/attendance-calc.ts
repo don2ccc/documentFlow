@@ -222,13 +222,23 @@ function floorToMinute(time: Date): Date {
 
 interface Alignment {
   count: number;
+  /** 上下班打卡齐全的时间段个数：同样匹配数下优先让完整的时段更多 */
+  complete: number;
   distance: number;
   choice: 'match' | 'skipPunch' | 'skipPoint';
 }
 
-/** 匹配数多的优先；数量相同则总偏差小的优先 */
+/**
+ * 匹配数多的优先；匹配数相同则完整时段多的优先；再相同则总偏差小的优先。
+ *
+ * 例：打卡 16:34、20:03，班次第 2 段 12:30-16:30、第 3 段 17:00-20:00。
+ * 16:34 既可以当第 2 段下班卡（差 4 分钟），也可以当第 3 段上班卡（差 26 分钟）。
+ * 第 3 段已经有 20:03 的下班卡，说明员工第 3 段确实在岗，因此优先满足第 3 段：
+ * 16:34 记到第 3 段上班，第 3 段完整，第 2 段整段为空。
+ */
 function isBetter(a: Alignment, b: Alignment): boolean {
   if (a.count !== b.count) return a.count > b.count;
+  if (a.complete !== b.complete) return a.complete > b.complete;
   return a.distance < b.distance;
 }
 
@@ -293,20 +303,27 @@ function buildSegmentDetail(
   const toleranceAt = (j: number) => (expected[j].side === 'in' ? IN_TOLERANCE_MS : OUT_TOLERANCE_MS);
 
   const memo = new Map<number, Alignment>();
-  const solve = (i: number, j: number): Alignment => {
-    if (i >= n || j >= m) return { count: 0, distance: 0, choice: 'skipPoint' };
-    const key = i * (m + 1) + j;
+  // run 表示「上一个应打卡点的前一个点刚被同一个连续匹配占用」，
+  // 只有连续匹配到「in → out」才算这个时间段完整。
+  const solve = (i: number, j: number, run: boolean): Alignment => {
+    if (i >= n || j >= m) return { count: 0, complete: 0, distance: 0, choice: 'skipPoint' };
+    const key = (i * (m + 1) + j) * 2 + (run ? 1 : 0);
     const cached = memo.get(key);
     if (cached) return cached;
 
-    let best: Alignment = { ...solve(i + 1, j), choice: 'skipPunch' };
-    const skipPoint = solve(i, j + 1);
+    let best: Alignment = { ...solve(i + 1, j, false), choice: 'skipPunch' };
+    const skipPoint = solve(i, j + 1, false);
     if (isBetter(skipPoint, best)) best = { ...skipPoint, choice: 'skipPoint' };
 
     const distance = Math.abs(punchAt(i, j).getTime() - expected[j].at.getTime());
     if (distance <= toleranceAt(j)) {
-      const rest = solve(i + 1, j + 1);
-      const matched = { count: rest.count + 1, distance: rest.distance + distance, choice: 'match' as const };
+      const rest = solve(i + 1, j + 1, true);
+      const matched = {
+        count: rest.count + 1,
+        complete: rest.complete + (run && expected[j].side === 'out' ? 1 : 0),
+        distance: rest.distance + distance,
+        choice: 'match' as const
+      };
       if (isBetter(matched, best)) best = matched;
     }
     memo.set(key, best);
@@ -316,16 +333,20 @@ function buildSegmentDetail(
   const picked = new Map<string, Date>();
   let i = 0;
   let j = 0;
+  let run = false;
   while (i < n && j < m) {
-    const step = solve(i, j).choice;
+    const step = solve(i, j, run).choice;
     if (step === 'match') {
       picked.set(`${expected[j].index}-${expected[j].side}`, punchAt(i, j));
       i += 1;
       j += 1;
+      run = true;
     } else if (step === 'skipPunch') {
       i += 1;
+      run = false;
     } else {
       j += 1;
+      run = false;
     }
   }
 

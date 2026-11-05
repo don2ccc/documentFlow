@@ -230,6 +230,56 @@ describe('computeDailyResults', () => {
     ]);
     expect(row.status).toBe('正常');
   });
+
+  it('第 2 段没有上班卡但第 3 段有下班卡时，优先满足第 3 段', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-10-31 16:34:40'),
+      punch('2026-10-31 20:03:21')
+    ]);
+    // 16:34 既可以当第 2 段下班卡，也可以当第 3 段上班卡；
+    // 第 3 段已有 20:03 下班卡证明在岗，因此 16:34 归到第 3 段上班，第 2 段整段为空。
+    expect(row.segments.map((s) => [s.start, s.in, s.out])).toEqual([
+      ['07:30', null, null],
+      ['12:30', null, null],
+      ['17:00', '16:34:40', '20:03:21']
+    ]);
+    expect(row.status).toBe('缺卡');
+  });
+
+  it('优先满足第 3 段时加班按第 3 段实际在岗时间算', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-10-31 16:34:40'),
+      punch('2026-10-31 20:03:21')
+    ], [{
+      employeeNo: '10000001',
+      startAt: '2026-10-31 12:30:00',
+      endAt: '2026-10-31 20:00:00',
+      otCode: 'OTS'
+    }]);
+    // 第 1、2 段缺卡整段不计；第 3 段 17:00-20:00 = 180 分钟 → 180
+    expect(row.overtimeMinutes).toBe(180);
+    expect(row.segments.map((s) => [s.start, s.in, s.out])).toEqual([
+      ['07:30', null, null],
+      ['12:30', null, null],
+      ['17:00', '16:34:40', '20:03:21']
+    ]);
+  });
+
+  it('相邻两段都只缺上班卡时，仍按偏差最小归位（不硬移）', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-11-01 07:30:00'),
+      punch('2026-11-01 11:30:00'),
+      punch('2026-11-01 12:30:00'),
+      punch('2026-11-01 16:30:00'),
+      punch('2026-11-01 20:00:00')
+    ]);
+    // 16:30 已经能完整收尾第 2 段，就留在第 2 段，不挪到第 3 段上班
+    expect(row.segments.map((s) => [s.start, s.in, s.out])).toEqual([
+      ['07:30', '07:30:00', '11:30:00'],
+      ['12:30', '12:30:00', '16:30:00'],
+      ['17:00', null, '20:00:00']
+    ]);
+  });
 });
 
 describe('OT 申请（加班单）', () => {
@@ -393,8 +443,9 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 20:00:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
     expect(row.status).toBe('OT加班');
-    // 第 2 段缺上班卡、第 3 段缺上班卡，均整段扣完，只剩第 1 段 4h
-    expect(row.overtimeMinutes).toBe(240);
+    // 16:30 归到第 3 段上班（第 3 段有 20:00 下班卡证明在岗），第 2 段整段为空；
+    // 只剩第 1 段 4h + 第 3 段 3h = 420
+    expect(row.overtimeMinutes).toBe(420);
     expect(row.abnormal).toContain('缺卡：第 2 段上班');
   });
 
