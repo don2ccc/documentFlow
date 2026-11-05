@@ -83,7 +83,8 @@ describe('computeDailyResults', () => {
     expect(row.firstIn).toBe('07:20:00');
     expect(row.lastOut).toBe('20:09:00');
     expect(row.normalMinutes).toBe(660);
-    expect(row.workMinutes).toBe(669);
+    // 669 分钟按 30 分钟向下取整 → 660（11.00h）
+    expect(row.workMinutes).toBe(660);
     expect(row.overtimeMinutes).toBe(180);
     expect(row.lateMinutes).toBe(0);
     expect(row.earlyMinutes).toBe(0);
@@ -99,7 +100,8 @@ describe('computeDailyResults', () => {
     ]);
     expect(row.lateMinutes).toBe(10);
     expect(row.earlyMinutes).toBe(10);
-    expect(row.workMinutes).toBe(460);
+    // 460 分钟按 30 分钟向下取整 → 450（7.50h）
+    expect(row.workMinutes).toBe(450);
     expect(row.overtimeMinutes).toBe(0);
     expect(row.status).toBe('迟到/早退');
   });
@@ -137,7 +139,7 @@ describe('computeDailyResults', () => {
       [null, null],
       [null, '20:09:00']
     ]);
-    expect(row.workMinutes).toBe(669);
+    expect(row.workMinutes).toBe(660);
     expect(row.status).toBe('缺卡');
   });
 
@@ -246,6 +248,21 @@ describe('computeDailyResults', () => {
     expect(row.status).toBe('缺卡');
   });
 
+  it('工作时长也按 30 分钟向下取整：3h05m 显示 3.00h', () => {
+    const [row] = computeDailyResults(M10, [
+      punch('2026-10-31 16:34:40'),
+      punch('2026-10-31 20:03:21')
+    ]);
+    // 17:00-20:00 共 180 分钟 + 20:00 之后 3 分钟 = 183 分钟 → 180（3.00h）
+    expect(row.workMinutes).toBe(180);
+    expect(row.overtimeMinutes).toBe(0);
+    expect(row.segments.map((s) => [s.start, s.in, s.out])).toEqual([
+      ['07:30', null, null],
+      ['12:30', null, null],
+      ['17:00', '16:34:40', '20:03:21']
+    ]);
+  });
+
   it('优先满足第 3 段时加班按第 3 段实际在岗时间算', () => {
     const [row] = computeDailyResults(M10, [
       punch('2026-10-31 16:34:40'),
@@ -318,9 +335,9 @@ describe('OT 申请（加班单）', () => {
       punch('2026-11-01 16:44:00'),
       punch('2026-11-01 20:02:00')
     ], [ot('2026-11-01 07:30:00', '2026-11-01 20:00:00')]);
-    // 4h + 13:16-16:30 共 3h14m + 3h = 614 分钟 → 600（10h）
+    // 4h + 13:16-16:30 共 3h14m + 3h = 614 分钟 → 600（10h）；工时同样按 30 分钟向下取整
     expect(row.overtimeMinutes).toBe(600);
-    expect(row.workMinutes).toBe(614);
+    expect(row.workMinutes).toBe(600);
     expect(row.status).toBe('OT加班');
   });
 
@@ -497,12 +514,12 @@ describe('computeDailyResultsForShifts（原始数据自带班次列）', () => 
     const m21 = rows.find((r) => r.shiftCode === 'M21')!;
     expect(m10.workDate).toBe('2026-11-01');
     expect(m10.shiftName).toBe('白班1#');
-    expect(m10.workMinutes).toBe(668);
+    expect(m10.workMinutes).toBe(660);
     expect(m10.overtimeMinutes).toBe(180);
     // 只打了两头两次卡，中间的应打卡点为空白，按新口径算缺卡
     expect(m10.status).toBe('缺卡');
     expect(m21.workDate).toBe('2026-11-01');
-    expect(m21.workMinutes).toBe(658);
+    expect(m21.workMinutes).toBe(630);
     expect(m21.overtimeMinutes).toBe(150);
     expect(m21.standardMinutes).toBe(480);
     expect(m21.earlyMinutes).toBe(0);

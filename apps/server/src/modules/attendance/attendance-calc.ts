@@ -407,7 +407,10 @@ function calcGroup(
   }
   const extraMs = Math.max(0, last.getTime() - window.end.getTime());
   const workMs = normalMs + extraMs;
-  const workMinutes = Math.floor(workMs / MINUTES_MS);
+  const rawWorkMinutes = Math.floor(workMs / MINUTES_MS);
+  // 工作时长同样按 30 分钟为单位向下取整：不足 30 分钟舍去，
+  // 因此页面上只会出现整数或 .5 小时（3h05m → 3.00h，10h59m → 10.50h）。
+  const workMinutes = Math.floor(rawWorkMinutes / OVERTIME_UNIT_MINUTES) * OVERTIME_UNIT_MINUTES;
 
   const { segments, workedIntervals, missingPoints } = buildSegmentDetail(
     window, times, config.standardMinutes
@@ -466,8 +469,8 @@ function calcGroup(
       punchCount,
       standardMinutes: 0,
       normalMinutes: 0,
-      // OT 当天的工作时长与加班同口径（按时间段实际在岗时间）
-      workMinutes: otMinutes,
+      // OT 当天的工作时长与加班同口径（按时间段实际在岗时间，同样按 30 分钟向下取整）
+      workMinutes: overtimeMinutes,
       overtimeMinutes,
       lateMinutes: 0,
       earlyMinutes: 0,
@@ -497,7 +500,7 @@ function calcGroup(
   else if (lateMinutes > 0 && earlyMinutes > 0) status = '迟到/早退';
   else if (lateMinutes > 0) status = '迟到';
   else if (earlyMinutes > 0) status = '早退';
-  else if (workMinutes === 0) status = '异常';
+  else if (rawWorkMinutes === 0) status = '异常';
 
   const reasons: string[] = [];
   if (lateMinutes > 0) reasons.push(`迟到 ${lateMinutes} 分钟`);
